@@ -1,0 +1,25 @@
+{
+    "id": "4D4CC2A2",
+    "path": "D:/globant_ds_test/workflow.R",
+    "project_path": "workflow.R",
+    "type": "r_source",
+    "hash": "933105765",
+    "contents": "",
+    "dirty": false,
+    "created": 1606593468987.0,
+    "source_on_save": false,
+    "relative_order": 5,
+    "properties": {
+        "tempName": "Untitled1",
+        "cursorPosition": "10,0",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1606595019,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1606595019416,
+    "read_only": false,
+    "read_only_alternatives": []
+}

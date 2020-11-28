@@ -1,0 +1,26 @@
+{
+    "id": "620BF2FD",
+    "path": "D:/globant_ds_test/patient-hospital_analysis.Rmd",
+    "project_path": "patient-hospital_analysis.Rmd",
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1606528449853.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "cursorPosition": "207,0",
+        "scrollLine": "102",
+        "last_setup_crc32": "",
+        "ignored_words": "dataset\n"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1606592564,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1606592564454,
+    "read_only": false,
+    "read_only_alternatives": []
+}

@@ -1,0 +1,32 @@
+{
+    "type": [
+        0,
+        1,
+        3,
+        0,
+        1,
+        0,
+        1,
+        3,
+        0,
+        1,
+        0,
+        1,
+        2
+    ],
+    "data": [
+        "> ",
+        "model <- caret::train(readmitted ~ ., data=tbl_cmp, trControl=train_control, method = \"gbm\")",
+        "Error in unserialize(socklist[[n]]) : error reading from connection\n",
+        "> ",
+        "",
+        "> ",
+        "stopCluster(cl)",
+        "Error in serialize(data, node$con) : error writing to connection\n",
+        "> ",
+        "g <- gc()",
+        "> ",
+        "rm(list = ls())",
+        "\nRestarting R session...\n\n"
+    ]
+}

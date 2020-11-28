@@ -1,0 +1,24 @@
+{
+    "id": "1912B657",
+    "path": "D:/ToBackup/climate_action/landraces/scripts/classification_function.R",
+    "project_path": null,
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1606536048698.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "cursorPosition": "102,3",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1563220259,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1563220259,
+    "read_only": false,
+    "read_only_alternatives": []
+}
