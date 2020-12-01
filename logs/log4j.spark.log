@@ -15604,3 +15604,13 @@ FROM `sparklyr_tmp_7cd78c29_40b5_4872_b41f_448ef9ea9fdc`
 20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 270
 20/12/01 09:55:30 INFO BlockManager: Removing RDD 243
 20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 243
+20/12/01 14:33:58 INFO SparkContext: Invoking stop() from shutdown hook
+20/12/01 14:33:58 INFO SparkUI: Stopped Spark web UI at http://127.0.0.1:4040
+20/12/01 14:33:58 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+20/12/01 14:33:58 INFO MemoryStore: MemoryStore cleared
+20/12/01 14:33:58 INFO BlockManager: BlockManager stopped
+20/12/01 14:33:58 INFO BlockManagerMaster: BlockManagerMaster stopped
+20/12/01 14:33:58 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+20/12/01 14:33:58 INFO SparkContext: Successfully stopped SparkContext
+20/12/01 14:33:58 INFO ShutdownHookManager: Shutdown hook called
+20/12/01 14:33:58 INFO ShutdownHookManager: Deleting directory /private/var/folders/kf/_5bjnbzx49n7xxn3jz9qp8f00000gn/T/spark-ebfb5518-3812-42c7-a697-fd6b3a1eab75
