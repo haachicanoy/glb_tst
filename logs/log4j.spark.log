@@ -15518,3 +15518,89 @@ FROM `sparklyr_tmp_7cd78c29_40b5_4872_b41f_448ef9ea9fdc`
 20/12/01 09:42:15 INFO DAGScheduler: Job 253 finished: aggregate at AreaUnderCurve.scala:45, took 0.008042 s
 20/12/01 09:42:15 INFO MapPartitionsRDD: Removing RDD 749 from persistence list
 20/12/01 09:42:15 INFO BlockManager: Removing RDD 749
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 216
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 216
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 18527
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 18528
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 18529
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 18530
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 18531
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 18532
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned shuffle 129
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned shuffle 130
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_557_piece0 on 127.0.0.1:51453 in memory (size: 17.8 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_558_piece0 on 127.0.0.1:51453 in memory (size: 1891.0 B, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_559_piece0 on 127.0.0.1:51453 in memory (size: 2.2 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 749
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 749
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_560_piece0 on 127.0.0.1:51453 in memory (size: 3.1 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_561_piece0 on 127.0.0.1:51453 in memory (size: 3.2 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 188
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 188
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 164
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 164
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 4386
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 4385
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 4384
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 4383
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 4382
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 4381
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_58_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_50_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_44_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_38_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.2 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_30_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.3 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_24_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.3 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_18_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.3 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_12_piece0 on 127.0.0.1:51453 in memory (size: 15.3 KB, free: 904.3 MB)
+20/12/01 09:55:30 INFO BlockManagerInfo: Removed broadcast_7_piece0 on 127.0.0.1:51453 in memory (size: 15.0 KB, free: 904.3 MB)
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 41
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 41
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 390
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 389
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 388
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 387
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 386
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 385
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 384
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 383
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 382
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 381
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 380
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned accumulator 379
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 702
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 702
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 675
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 675
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 648
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 648
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 621
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 621
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 594
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 594
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 567
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 567
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 540
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 540
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 513
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 513
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 486
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 486
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 459
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 459
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 432
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 432
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 405
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 405
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 378
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 378
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 351
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 351
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 324
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 324
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 297
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 297
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 270
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 270
+20/12/01 09:55:30 INFO BlockManager: Removing RDD 243
+20/12/01 09:55:30 INFO ContextCleaner: Cleaned RDD 243
