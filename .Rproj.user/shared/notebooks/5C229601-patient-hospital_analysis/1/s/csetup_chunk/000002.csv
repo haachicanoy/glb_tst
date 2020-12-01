@@ -1,5 +1,0 @@
-"0","knitr::opts_chunk$set(echo = TRUE)"
-"0","options(warn = -1, scipen = 999)"
-"0","if(!require(pacman)){install.packages('pacman')}"
-"0","suppressMessages(library(pacman))"
-"0","pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster)"

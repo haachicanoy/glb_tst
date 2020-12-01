@@ -1,19 +1,19 @@
-# 1. Download and save the data: ok
-# 2. Add NA's: ok
-# 3. Remove variables without variance: ok
-# 4. Replace variables categories: ok
-# 5. Identify variables with more than 15% of missing data: ok
-# 6. Take a decision with those variables: removing them, leave them in using in other analysis different that classification and clustering?
-# 7. Remove ID variables from analysis
-# 8. Correlation analysis among all variables
-# 9. Have a good data base to:
-# 	Use spark
+## Steps to follow
+
+# 7. Remove ID variables from analysis:
+# 8. Correlation analysis among all variables:
+# 9. Having a good database I have to:
+# 	- Define how to deal with missing data: imputing is the best option
+#   - Define how to balance the unbalanced class: downsampling, upsampling, mixed approach
+#   - Identify and check outliers
+#   - Classification model: 
+#   - Clustering analysis: k-means
 
 # R options
 options(warn = -1, scipen = 999)
 if(!require(pacman)){install.packages('pacman')}
 suppressMessages(library(pacman))
-pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster)
+suppressMessages(pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster, sparklyr))
 
 ## Obtain the data
 if(!file.exists(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'))){
@@ -32,7 +32,7 @@ if(!file.exists(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'))){
 ## Replace '?' character by NA's
 tbl <- tbl %>% dplyr::na_if(y = '?')
 
-psych::describe(tbl)
+# psych::describe(tbl)
 
 ## Data pre-processing
 
@@ -58,10 +58,13 @@ idi3 <- idi3[-1,]
 tbl$admission_type_id <- factor(tbl$admission_type_id)
 levels(tbl$admission_type_id) <- idi1$description
 levels(tbl$admission_type_id)[levels(tbl$admission_type_id) %in% c('NULL','Not Available')] <- NA
+# Create a new category which comprises the levels: 'Newborn','Trauma Center','Not Mapped'
+levels(tbl$admission_type_id)[levels(tbl$admission_type_id) %in% c('Newborn','Trauma Center','Not Mapped')] <- 'Other'
 
 tbl$discharge_disposition_id <- factor(tbl$discharge_disposition_id)
 levels(tbl$discharge_disposition_id) <- idi2$description[match(levels(tbl$discharge_disposition_id), idi2$discharge_disposition_id)]
 levels(tbl$discharge_disposition_id)[levels(tbl$discharge_disposition_id) %in% c('NULL','Not Available')] <- NA
+grep(pattern = 'discharged ', x = levels(tbl$discharge_disposition_id))
 
 tbl$admission_source_id <- factor(tbl$admission_source_id)
 levels(tbl$admission_source_id) <- idi3$description[match(levels(tbl$admission_source_id), idi3$admission_source_id)]
@@ -75,7 +78,11 @@ msg <- tbl %>%
   .[. > 0.15]
 print(msg)
 
-# table(tbl$medical_specialty, tbl$readmitted) %>%
+# Remove variables with more than 15% of missing data
+tbl <- tbl[,-which(names(tbl) %in% names(msg))]
+
+# Check the confusion matrix
+# table(tbl$race, tbl$readmitted) %>%
 #   base::data.frame() %>%
 #   ggplot(aes(x = Var1, y = Var2, fill = Freq)) +
 #   geom_tile() +
@@ -84,9 +91,29 @@ print(msg)
 #   scale_x_discrete(name = "") +
 #   scale_y_discrete(name = "")
 
-tbl <- tbl[,-which(names(tbl) %in% names(msg))]
+# How many times the same patient visited the hospital
+# Select the ones with the maximum number of days interned in the hospital
+visits <- tbl$patient_nbr %>% table %>% sort(decreasing = T) %>% base::as.data.frame()
+names(visits)[1] <- 'patient_nbr'
+visits$patient_nbr <- visits$patient_nbr %>% as.character() %>% as.numeric()
+unq_vs <- visits %>% dplyr::filter(Freq == 1)
+visits <- visits %>% dplyr::filter(Freq > 1)
 
-str(tbl)
+tbl_unq <- tbl %>% dplyr::filter(patient_nbr %in% unq_vs$patient_nbr)
+tbl_unq$number_visits <- 1
+
+tbl_dup <- 1:nrow(visits) %>%
+  purrr::map(.f = function(i){
+    df <- tbl %>%
+      dplyr::filter(patient_nbr == visits$patient_nbr[i]) %>%
+      .[which.max(.$time_in_hospital)[1],]
+    df$number_visits <- visits$Freq[i]
+    return(df)
+  }) %>%
+  dplyr::bind_rows()
+
+tbl <- rbind(tbl_dup, tbl_unq)
+rm(tbl_dup, tbl_unq, unq_vs, visits)
 
 ## Transform character to factors
 tbl[sapply(tbl, is.character)] <- lapply(tbl[sapply(tbl, is.character)], as.factor)
@@ -102,17 +129,42 @@ tbl$age_num <- tbl$age %>%
   }) %>%
   unlist
 
+# Response variable
+tbl$readmitted %in% c('<30','>30')
+
 ## Exploratory Data Analysis
 
 summary(tbl)
 tbl$encounter_id <- NULL
 tbl$patient_nbr  <- NULL
 
+tbl$gender[grep(pattern = 'Unknown', x = tbl$gender)] <- NA
 
+tbl$discharge_disposition_id %>% table() %>% sort(decreasing = T) %>% View()
+tbl$admission_source_id %>% table() %>% sort(decreasing = T)
+tbl$diag_1 %>% unique %>% length()
+tbl$diag_2 %>% unique %>% length()
+tbl$diag_3 %>% unique %>% length()
 
 ## Correlation analysis
 
 tbl_cmp <- tbl[complete.cases(tbl),]
+
+sc <- sparklyr::spark_connect(master = 'local')
+
+tbl_spk <- sparklyr::copy_to(sc, tbl_cmp)
+partitions <- tbl_spk %>%
+  sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
+
+# fit a linear model to the training dataset
+fit <- partitions$training %>%
+  ml_random_forest(readmitted ~ ., type = 'classification')
+fit
+
+pred <- ml_predict(fit, partitions$test)
+
+ml_multiclass_classification_evaluator(pred)
+
 
 pat_no <- tbl_cmp %>%
   dplyr::filter(readmitted == 'NO')

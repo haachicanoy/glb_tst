@@ -1,21 +1,26 @@
 ---
-title: "Patient-hospital analysis"
-author: "Harold Achicanoy Estrella"
-date: "11/27/2020"
+title: "Diabetes patients analysis"
+author: "Harold Armando Achicanoy Estrella"
+date: "11/28/2020"
 output: html_document
 ---
 
-```{r setup, include = TRUE}
+The main objective of this analysis consists of identifying the variables that contribute the most to explain why some patients reconsulted after the application of diabetes treatments. The dataset is composed of hospital records from 130 units from the hospital network in the USA through the period 1999-2008.
+
+Understanding the readmission process causes will help doctors to support decision making on how to address and treat diabetes patients.
+
+The carried analysis uses the **Spark 2.1.0** framework. The machine configuration is as follows: MacBook Pro (13-inch, Mid 2012), Processor: 2.5 GHz Intel Core i5, RAM: 16 GB.
+
+```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+# R options
 options(warn = -1, scipen = 999)
 if(!require(pacman)){install.packages('pacman')}
 suppressMessages(library(pacman))
-pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster)
+suppressMessages(pacman::p_load(tidyverse, vroom, psych, caret, corrplot, fastcluster, sparklyr))
 ```
 
-The main objective of this analysis consist in identify the factors that contribute to explain why some patients reconsult after the application of some diabetes treatments.
-
-Understanding the causes will help doctors to support decision making on how to address and treat diabetes patients.
+The structure of this notebook is compiled by sections of obtain, treat, organize, describe, and develop models from the data to solve the research question.
 
 ## Obtain the data
 
