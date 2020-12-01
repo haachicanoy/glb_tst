@@ -13,7 +13,7 @@
 options(warn = -1, scipen = 999)
 if(!require(pacman)){install.packages('pacman')}
 suppressMessages(library(pacman))
-suppressMessages(pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster, sparklyr, fastDummies, ape))
+suppressMessages(pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster, sparklyr, fastDummies, ape, Boruta, future, future.apply, furrr))
 
 ## Obtain the data
 if(!file.exists(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'))){
@@ -170,6 +170,9 @@ tbl_num <- tbl_num %>%
 tbl_num_full <- tbl_num %>%
   tidyr::drop_na()
 
+tbl_num_full_bin <- tbl_num_full
+tbl_num_full_bin$readmitted <- ifelse(test = tbl_num_full_bin$readmitted %in% c('<30','>30'), yes = 1, no = 0)
+
 tbl_num_full_sp <- tbl_num_full[,-ncol(tbl_num_full)]
 tbl_num_less_30 <- tbl_num_full[tbl_num_full$readmitted == '<30',]
 tbl_num_less_30$readmitted <- NULL
@@ -197,12 +200,68 @@ mantel.test(cmat_more30, cmat_nordsm, nperm = 999, graph = T)
 cmat_less30 %>%
   corrplot()
 
+## Feature importance
+future::plan(multiprocess, workers = future::availableCores()-1)
+
+set.seed(1)
+seeds <- round(runif(20) * 1000, 0)
+
+selected_fts <- seeds %>%
+  furrr::future_map(.f = function(seed){
+    set.seed(seed)
+    smp <- sample(x = 1:nrow(tbl_num_full_bin), size = 2000, replace = F)
+    fts <- Boruta::Boruta(formula = readmitted ~ ., data = tbl_num_full_bin[smp,])
+    res <- fts$finalDecision
+    return(res)
+  })
+
+# set.seed(1)
+# seeds <- round(runif(20) * 1000, 0)
+# selected_fts <- seeds %>%
+#   purrr::map(.f = function(seed){
+#     set.seed(seed)
+#     smp <- sample(x = 1:nrow(tbl_num_full_bin), size = 2000, replace = F)
+#     fts <- Boruta::Boruta(formula = readmitted ~ ., data = tbl_num_full_bin[smp,])
+#     res <- fts$finalDecision
+#     return(res)
+#   })
+
+fts <- selected_fts %>% as.data.frame()
+fts$Feature <- rownames(fts)
+rownames(fts) <- 1:nrow(fts)
+colnames(fts)[1:20] <- paste0('Run_',1:20)
+fts %>%
+  tidyr::pivot_longer(cols = Run_1:Run_20) %>%
+  dplyr::group_by(Feature, value) %>%
+  dplyr::summarise(Count = n()) %>%
+  dplyr::filter(!(value == 'Rejected' & Count == 20)) %>%
+  ggplot2::ggplot(aes(x = reorder(Feature, -Count), y = Count, fill = value)) +
+  ggplot2::geom_bar(stat = 'identity') +
+  ggplot2::coord_flip()
+
+fnl_fst <- fts %>%
+  tidyr::pivot_longer(cols = Run_1:Run_20) %>%
+  dplyr::group_by(Feature, value) %>%
+  dplyr::summarise(Count = n()) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(Feature) %>%
+  dplyr::summarise(Decision = value[which.max(Count)]) %>%
+  dplyr::filter(Decision %in% c('Confirmed','Tentative')) %>%
+  dplyr::pull(Feature)
+fnl_fst[1] <- gsub('\`','',fnl_fst[1])
+
+tbl_num_sel_bin <- tbl_num_full_bin[,c(fnl_fst,'readmitted')]
+
 ## Spark connection
 
 sc <- sparklyr::spark_connect(master = 'local')
 
-tbl_spk    <- sparklyr::copy_to(sc, tbl_num_full_sp, overwrite = T)
+tbl_spk    <- sparklyr::copy_to(sc, tbl_num_full_bin, overwrite = T)
 partitions <- tbl_spk %>%
+  sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
+
+tbl_fnl_spk <- sparklyr::copy_to(sc, tbl_num_sel_bin, overwrite = T)
+partitions2 <- tbl_fnl_spk %>%
   sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
 
 # Perform PCA
@@ -235,17 +294,40 @@ r_no_rdms$readmitted <- 'NO'
 r_pca <- rbind(r_less_30, r_more_30, r_no_rdms)
 
 r_pca %>%
-  ggplot(aes(x = reorder(variable, -PC3), y = PC3)) +
+  ggplot(aes(x = reorder(variable, -PC2), y = PC2)) +
   geom_bar(stat = "identity") +
   coord_flip() +
   facet_wrap(~readmitted)
 
-# fit a linear model to the training dataset
+# Fit a linear model to the training dataset
 fit <- partitions$training %>%
-  ml_random_forest(readmitted ~ ., type = 'classification')
+  ml_logistic_regression(readmitted ~ .)
+
 fit
 
 pred <- ml_predict(fit, partitions$test)
+ml_binary_classification_eval(pred)
+
+# Fit a linear model to the training dataset selected features
+fit2 <- partitions2$training %>%
+  dplyr::select(-number_visits) %>%
+  ml_logistic_regression(readmitted ~ .)
+
+fit2$coefficients
+
+pred2 <- ml_predict(fit2, partitions2$test)
+ml_binary_classification_eval(pred2)
+
+# Fit a GBM model to the training dataset selected features
+gbm_fit <- partitions2$training %>%
+  sparklyr::ml_gradient_boosted_trees(readmitted ~ .)
+
+pred3 <- ml_predict(gbm_fit, partitions2$test)
+ml_binary_classification_eval(x = pred3, label_col = 'readmitted', prediction_col = "prediction")
+
+ml_binary_classification_evaluator(x = pred2, label_col = 'readmitted', raw_prediction_col = 'prediction')
+ml_binary_classification_evaluator(x = pred3, label_col = 'readmitted', raw_prediction_col = 'prediction')
+
 
 ml_multiclass_classification_evaluator(pred)
 
