@@ -13,7 +13,7 @@
 options(warn = -1, scipen = 999)
 if(!require(pacman)){install.packages('pacman')}
 suppressMessages(library(pacman))
-suppressMessages(pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster, sparklyr))
+suppressMessages(pacman::p_load(tidyverse, vroom, psych, caret, caretEnsemble, corrplot, ranger, fastcluster, sparklyr, fastDummies, ape))
 
 ## Obtain the data
 if(!file.exists(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'))){
@@ -64,12 +64,20 @@ levels(tbl$admission_type_id)[levels(tbl$admission_type_id) %in% c('Newborn','Tr
 tbl$discharge_disposition_id <- factor(tbl$discharge_disposition_id)
 levels(tbl$discharge_disposition_id) <- idi2$description[match(levels(tbl$discharge_disposition_id), idi2$discharge_disposition_id)]
 levels(tbl$discharge_disposition_id)[levels(tbl$discharge_disposition_id) %in% c('NULL','Not Available')] <- NA
-grep(pattern = 'discharged ', x = levels(tbl$discharge_disposition_id))
+levels(tbl$discharge_disposition_id)[grep(pattern = '[dD][iI][sS][cC][hH][aA][rR][gG][eE][dD]', x = levels(tbl$discharge_disposition_id))] <- 'Discharged'
+levels(tbl$discharge_disposition_id)[grep(pattern = '[eE][xX][pP][iI][rR][eE][dD]', x = levels(tbl$discharge_disposition_id))] <- 'Expired'
+levels(tbl$discharge_disposition_id)[grep(pattern = '[hH][oO][sS][pP][iI][cC][eE]', x = levels(tbl$discharge_disposition_id))] <- 'Hospice'
+levels(tbl$discharge_disposition_id)[c(2,3,5)] <- 'Admitted'
 
 tbl$admission_source_id <- factor(tbl$admission_source_id)
 levels(tbl$admission_source_id) <- idi3$description[match(levels(tbl$admission_source_id), idi3$admission_source_id)]
 levels(tbl$admission_source_id)[levels(tbl$admission_source_id) %in% c('NULL','Not Available')] <- NA
+levels(tbl$admission_source_id)[grep(pattern = '[tT][rR][aA][nN][sS][fF][eE][rR]', x = levels(tbl$admission_source_id))] <- 'Transfer'
+levels(tbl$admission_source_id)[grep(pattern = '[rR][eE][fF][eE][rR][rR][aA][lL]', x = levels(tbl$admission_source_id))] <- 'Referral'
+levels(tbl$admission_source_id)[4:8] <- 'Other'
 rm(idi, idi1, idi2, idi3)
+
+tbl$gender[grep(pattern = 'Unknown', x = tbl$gender)] <- NA
 
 ## Identify variables with more than 15% of missing data
 msg <- tbl %>%
@@ -130,7 +138,7 @@ tbl$age_num <- tbl$age %>%
   unlist
 
 # Response variable
-tbl$readmitted %in% c('<30','>30')
+# tbl$readmitted %in% c('<30','>30')
 
 ## Exploratory Data Analysis
 
@@ -138,23 +146,99 @@ summary(tbl)
 tbl$encounter_id <- NULL
 tbl$patient_nbr  <- NULL
 
-tbl$gender[grep(pattern = 'Unknown', x = tbl$gender)] <- NA
+# Get rid of diag_1, diag_2, and diag_3
+tbl$diag_1 <- tbl$diag_2 <- tbl$diag_3 <- NULL
 
-tbl$discharge_disposition_id %>% table() %>% sort(decreasing = T) %>% View()
-tbl$admission_source_id %>% table() %>% sort(decreasing = T)
-tbl$diag_1 %>% unique %>% length()
-tbl$diag_2 %>% unique %>% length()
-tbl$diag_3 %>% unique %>% length()
+# Discard expired and hospiced people from analysis
+tbl$discharge_disposition_id <- tbl$discharge_disposition_id %>% as.character
+tbl <- tbl %>%
+  dplyr::filter(!(discharge_disposition_id %in% c('Expired','Hospice')))
+tbl$discharge_disposition_id <- tbl$discharge_disposition_id %>% factor()
 
-## Correlation analysis
+tbl_num <- tbl %>% fastDummies::dummy_cols(ignore_na = T)
+names(tbl_num)
+tbl_num <- tbl_num %>%
+  dplyr::select(time_in_hospital:number_diagnoses,
+                number_visits,age_num,
+                race_AfricanAmerican:race_Other,
+                gender_Female,gender_Male,
+                admission_type_id_Emergency:admission_type_id_Other,
+                discharge_disposition_id_Admitted:`discharge_disposition_id_Not Mapped`,
+                admission_source_id_Referral:admission_source_id_Other,
+                `A1Cresult_>7`:diabetesMed_Yes, readmitted)
 
-tbl_cmp <- tbl[complete.cases(tbl),]
+tbl_num_full <- tbl_num %>%
+  tidyr::drop_na()
+
+tbl_num_full_sp <- tbl_num_full[,-ncol(tbl_num_full)]
+tbl_num_less_30 <- tbl_num_full[tbl_num_full$readmitted == '<30',]
+tbl_num_less_30$readmitted <- NULL
+tbl_num_less_30 <- tbl_num_less_30[,-caret::nzv(tbl_num_less_30)]
+tbl_num_more_30 <- tbl_num_full[tbl_num_full$readmitted == '>30',]
+tbl_num_more_30$readmitted <- NULL
+tbl_num_more_30 <- tbl_num_more_30[,-caret::nzv(tbl_num_more_30)]
+tbl_num_no_rdms <- tbl_num_full[tbl_num_full$readmitted == 'NO',]
+tbl_num_no_rdms$readmitted <- NULL
+tbl_num_no_rdms <- tbl_num_no_rdms[,-caret::nzv(tbl_num_no_rdms)]
+
+cmat_less30 <- tbl_num_less_30 %>%
+  dplyr::select(names(tbl_num_more_30)) %>%
+  cor(method = 'spearman')
+cmat_more30 <- tbl_num_more_30 %>%
+  cor(method = 'spearman')
+cmat_nordsm <- tbl_num_no_rdms %>%
+  dplyr::select(names(tbl_num_more_30)) %>%
+  cor(method = 'spearman')
+
+mantel.test(cmat_less30, cmat_more30, nperm = 999, graph = T)
+mantel.test(cmat_less30, cmat_nordsm, nperm = 999, graph = T)
+mantel.test(cmat_more30, cmat_nordsm, nperm = 999, graph = T)
+
+cmat_less30 %>%
+  corrplot()
+
+## Spark connection
 
 sc <- sparklyr::spark_connect(master = 'local')
 
-tbl_spk <- sparklyr::copy_to(sc, tbl_cmp)
+tbl_spk    <- sparklyr::copy_to(sc, tbl_num_full_sp, overwrite = T)
 partitions <- tbl_spk %>%
   sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
+
+# Perform PCA
+pca_model <- sparklyr::ml_pca(partitions$training)
+print(pca_model)
+pca_model$model$pc %>% View()
+
+tbl_less_30_spk <- sparklyr::copy_to(sc, tbl_num_less_30, overwrite = T)
+tbl_more_30_spk <- sparklyr::copy_to(sc, tbl_num_more_30, overwrite = T)
+tbl_no_rdms_spk <- sparklyr::copy_to(sc, tbl_num_no_rdms, overwrite = T)
+
+pca_less_30 <- sparklyr::ml_pca(tbl_less_30_spk)
+pca_less_30$explained_variance %>% head(4)
+r_less_30 <- pca_less_30$pc %>% as.data.frame %>% .[,1:5]
+r_less_30$variable <- rownames(r_less_30)
+r_less_30$readmitted <- '<30'
+
+pca_more_30 <- sparklyr::ml_pca(tbl_more_30_spk)
+pca_more_30$explained_variance %>% head(4)
+r_more_30 <- pca_more_30$pc %>% as.data.frame %>% .[,1:5]
+r_more_30$variable <- rownames(r_more_30)
+r_more_30$readmitted <- '>30'
+
+pca_no_rdms <- sparklyr::ml_pca(tbl_no_rdms_spk)
+pca_no_rdms$explained_variance %>% head(4)
+r_no_rdms <- pca_no_rdms$pc %>% as.data.frame %>% .[,1:5]
+r_no_rdms$variable <- rownames(r_no_rdms)
+r_no_rdms$readmitted <- 'NO'
+
+r_pca <- rbind(r_less_30, r_more_30, r_no_rdms)
+
+r_pca %>%
+  ggplot(aes(x = reorder(variable, -PC3), y = PC3)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  facet_wrap(~readmitted)
 
 # fit a linear model to the training dataset
 fit <- partitions$training %>%
@@ -182,6 +266,9 @@ pat_more_30$readmitted <- NULL
 
 
 fastcluster::hclust()
+
+
+spark_disconnect(sc)
 
 # tst <- tbl[complete.cases(tbl),] %>% base::as.data.frame()
 # # cor2(df = tst)
