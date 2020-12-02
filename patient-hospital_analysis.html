@@ -711,12 +711,11 @@ rm(out_dir)</code></pre>
 <li>The proportion of the response variables is: readmitted (35%) vs no readmitted (65%)</li>
 <li>All the categorical variables were transformed to dummies</li>
 <li>The percentage of complete data is: 82.7%. Considering that this is a high proportion of complete cases, missing data were not imputed</li>
-<li>The final dataset contains patient records with features</li>
+<li>The final dataset contains 57642 patient records with 42 features</li>
 </ul>
 </div>
 <div id="exploratory-data-analysis" class="section level2">
 <h2>3. Exploratory Data Analysis</h2>
-<p>This step consists in checking the type of data and develop the final</p>
 <pre class="r"><code>## --------------------------------------------------- ##
 ## Exploratory Data Analysis
 ## --------------------------------------------------- ##
@@ -1071,9 +1070,17 @@ skimr::skim(tbl)</code></pre>
 </tr>
 </tbody>
 </table>
+<p>EDA highlights:</p>
+<ul>
+<li></li>
+<li>The number of confirmed diagnoses range between 1 and 16 with a median of 8 diagnoses</li>
+<li>The number of visits to the hospital network is positive skewed which means the majority of patients visits just one time. And just a few proportion visits more than once</li>
+<li>75% of the patients are more than 55 years old</li>
+</ul>
 </div>
 <div id="correlation-analysis" class="section level2">
 <h2>4. Correlation Analysis</h2>
+<p>The correlation analysis look to see if there are some grouping among features in terms of positive or negative correlations. Specifically, all the</p>
 <pre class="r"><code>## --------------------------------------------------- ##
 ## Correlation Analysis
 ## --------------------------------------------------- ##
@@ -1100,6 +1107,13 @@ corrplot::corrplot(m,
 </div>
 <div id="feature-selection" class="section level2">
 <h2>5. Feature Selection</h2>
+<p>One important step before studying the factors that insides in the readmission condition, is to identify which are the features that contributes the most to explain the response variable.</p>
+<p>This process is done by the application of the <a href="https://www.jstatsoft.org/article/view/v036i11">Boruta algorithm</a> which uses Random Forest models to quantify the importance of each predictor variable to explain the response variable. And finally, giving a three category response per variable. The categories are: Confirmed, Tentative, or Rejected.</p>
+<p>Despite, it is not possible to apply this algorithm over the full dataset considering the machine resources. The approach followed consists in:</p>
+<ul>
+<li>Generate 20 random samples of 2000 patient observations</li>
+<li></li>
+</ul>
 <pre class="r"><code>## --------------------------------------------------- ##
 ## Feature selection
 ## --------------------------------------------------- ##

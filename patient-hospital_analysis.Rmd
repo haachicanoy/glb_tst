@@ -276,8 +276,6 @@ The important highlights is this section are:
 
 ## 3. Exploratory Data Analysis
 
-This step consists in checking the type of data and develop the final
-
 ```{r description}
 ## --------------------------------------------------- ##
 ## Exploratory Data Analysis
@@ -288,7 +286,16 @@ This step consists in checking the type of data and develop the final
 skimr::skim(tbl)
 ```
 
+EDA highlights:
+
+* 
+* The number of confirmed diagnoses range between 1 and 16 with a median of 8 diagnoses
+* The number of visits to the hospital network is positive skewed which means the majority of patients visits just one time. And just a few proportion visits more than once
+* 75% of the patients are more than 55 years old
+
 ## 4. Correlation Analysis
+
+The correlation analysis look to see if there are some grouping among features in terms of positive or negative correlations. Specifically, all the 
 
 ```{r corr, include = TRUE}
 ## --------------------------------------------------- ##
@@ -316,6 +323,15 @@ corrplot::corrplot(m,
 ```
 
 ## 5. Feature Selection
+
+One important step before studying the factors that insides in the readmission condition, is to identify which are the features that contributes the most to explain the response variable.
+
+This process is done by the application of the [Boruta algorithm](https://www.jstatsoft.org/article/view/v036i11) which uses Random Forest models to quantify the importance of each predictor variable to explain the response variable. And finally, giving a three category response per variable. The categories are: Confirmed, Tentative, or Rejected.
+
+Despite, it is not possible to apply this algorithm over the full dataset considering the machine resources. The approach followed consists in:
+
+* Generate 20 random samples of 2000 patient observations
+* 
 
 ```{r fselection, include = TRUE}
 ## --------------------------------------------------- ##
