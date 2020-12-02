@@ -13,7 +13,7 @@ Understanding the readmission process causes will help doctors to support decisi
 
 To address this objective the idea is to follow a data science process applying some data preparation, description, feature selection, and finally the execution of some classification models. Put some highlighted results.
 
-The carried analysis uses the **[Spark](https://spark.apache.org/docs/2.1.0/) 2.1.0** general-purpose cluster computing system to run the classification models. The machine configuration is as follows: MacBook Pro (13-inch, Mid 2012), Processor: 2.5 GHz Intel Core i5, RAM: 16 GB.
+The carried analysis uses the **[Spark 2.1.0](https://spark.apache.org/docs/2.1.0/)** general-purpose cluster computing system to run the classification models. The machine configuration is as follows: MacBook Pro (13-inch, Mid 2012), Processor: 2.5 GHz Intel Core i5, RAM: 16 GB.
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -135,7 +135,7 @@ msg <- tbl %>%
   sort(decreasing = T) %>%
   .[. > 0.25]
 cat(paste0('Removed features due to high proportion of missing data\n'))
-print(names(msg))
+print(msg)
 
 ## Remove variables with more than 25% of missing data
 tbl <- tbl[,-which(names(tbl) %in% names(msg))]; rm(msg)
@@ -241,6 +241,9 @@ cat('Dummy categories without or with low variance\n')
 print(names(tbl_num_full)[zvar])
 tbl_num_full <- tbl_num_full[,-zvar]; rm(zvar)
 
+cat(paste0('Dataset dimensions\n'))
+print(dim(tbl_num_full))
+
 out_dir <- paste0(getwd(),'/processed_data')
 if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
 
@@ -256,11 +259,32 @@ if(!file.exists(paste0(out_dir,'/diabetic_data_processed_2_complete.csv'))){
 rm(out_dir)
 ```
 
+The important highlights is this section are:
+
+* 18 features removed due to near zero variability
+* 3 features removed due to high percentage of missing data
+* Multiple records per patient are present in the dataset. That represents multiple visits to the hospital network. These records were summarized in just one per patient. Selecting the record with the maximum number of days interned in the hospital and creating a new variable called: *number_visits*
+* 71518 unique patient records obtained after removing duplicate records per patient
+* Age numerical variable obtained using the midpoint of the age categorical intervals
+* The first three diagnoses which are categorical variables with more than 700 categories were discarded. The variable *number_diagnoses* captures the sum of all of detected diagnoses
+* The people classified as Expired or Hospiced were omitted from the analysis due to they can not be readmitted
+* The response variable was transformed to binary output. Considering that the readmission before and after 30 days are both bad situations for a patient. The analysis will be carried out using a binary classification, merging the readmissions before and after 30 days in one category
+* The proportion of the response variables is: readmitted (35%) vs no readmitted (65%)
+* All the categorical variables were transformed to dummies
+* The percentage of complete data is: 82.7%. Considering that this is a high proportion of complete cases, missing data were not imputed
+* The final dataset contains 57642 patient records with 42 features
+
 ## 3. Exploratory Data Analysis
 
 This step consists in checking the type of data and develop the final
 
 ```{r description}
+## --------------------------------------------------- ##
+## Exploratory Data Analysis
+## --------------------------------------------------- ##
+
+# This function brings a complete description of the dataset
+# for both categorical and numerical variables
 skimr::skim(tbl)
 ```
 
@@ -271,6 +295,14 @@ skimr::skim(tbl)
 ## Correlation Analysis
 ## --------------------------------------------------- ##
 
+# This function approximates the correlation calculation for
+# mixed variables (numerical and categorical). The following
+# cases are considered:
+# - Both variables numeric: non-parametric Spearman correlation
+# - One variable categorical, the other one numerical: ANOVA
+# test getting the R2 and applying the square root
+# - Both variables categorical: Cramer's V test to measure
+# association between two nominal variables
 # Taken from https://gist.github.com/talegari/b514dbbc651c25e2075d88f31d48057b
 source(paste0(getwd(),'/scripts/cor2_modified.R'))
 

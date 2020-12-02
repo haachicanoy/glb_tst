@@ -100,7 +100,7 @@ msg <- tbl %>%
   sort(decreasing = T) %>%
   .[. > 0.25]
 cat(paste0('Removed features due to high proportion of missing data\n'))
-print(names(msg))
+print(msg)
 
 ## Remove variables with more than 25% of missing data
 tbl <- tbl[,-which(names(tbl) %in% names(msg))]; rm(msg)
@@ -207,6 +207,9 @@ cat('Dummy categories without or with low variance\n')
 print(names(tbl_num_full)[zvar])
 tbl_num_full <- tbl_num_full[,-zvar]; rm(zvar)
 
+cat(paste0('Dataset dimensions\n'))
+print(dim(tbl_num_full))
+
 out_dir <- paste0(getwd(),'/processed_data')
 if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
 
@@ -225,12 +228,22 @@ rm(out_dir)
 ## Exploratory Data Analysis
 ## --------------------------------------------------- ##
 
+# This function brings a complete description of the dataset
+# for both categorical and numerical variables
 skimr::skim(tbl)
 
 ## --------------------------------------------------- ##
 ## Correlation Analysis
 ## --------------------------------------------------- ##
 
+# This function approximates the correlation calculation for
+# mixed variables (numerical and categorical). The following
+# cases are considered:
+# - Both variables numeric: non-parametric Spearman correlation
+# - One variable categorical, the other one numerical: ANOVA
+# test getting the R2 and applying the square root
+# - Both variables categorical: Cramer's V test to measure
+# association between two nominal variables
 # Taken from https://gist.github.com/talegari/b514dbbc651c25e2075d88f31d48057b
 source(paste0(getwd(),'/scripts/cor2_modified.R'))
 
