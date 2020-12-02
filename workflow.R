@@ -1,8 +1,6 @@
 ## Steps to follow
 
-# 8. Correlation analysis among all variables:
 # 9. Having a good database I have to:
-# 	- Define how to deal with missing data: imputing is the best option
 #   - Define how to balance the unbalanced class: downsampling, upsampling, mixed approach
 #   - Identify and check outliers
 #   - Classification model: 
@@ -17,38 +15,41 @@ suppressMessages(pacman::p_load(tidyverse, vroom, psych,
                                 ranger, fastcluster, sparklyr,
                                 fastDummies, ape, Boruta,
                                 future, future.apply, furrr,
-                                cor2))
+                                lsr, RColorBrewer, DT, skimr))
 
 ## --------------------------------------------------- ##
-## Obtain the data
+## Data obtention
 ## --------------------------------------------------- ##
+
 if(!file.exists(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'))){
-  ## Download data
+  # Download data
   url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/00296/dataset_diabetes.zip'
   download.file(url, destfile = paste0(getwd(),'/dataset_diabetes.zip'))
-  ## Unzip files
+  # Unzip files
   unzip(paste0(getwd(),'/dataset_diabetes.zip'))
   file.remove(paste0(getwd(),'/dataset_diabetes.zip'))
-  ## Load the data
+  # Load the data
   tbl <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'), delim = ',')
 } else {
-  ## Load the data
+  # Load the data
   tbl <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'), delim = ',')
 }
-## Replace '?' character by NA's
+# Replace '?' character by NA's
 tbl <- tbl %>% dplyr::na_if(y = '?')
 
-cat(paste0('The dataset is conformed by: ',dim(tbl), ' records vs features\n'))
+cat(paste0('Dataset dimensions\n'))
+print(dim(tbl))
 
 ## --------------------------------------------------- ##
 ## Data pre-processing
 ## --------------------------------------------------- ##
-## Identify and remove variables without or with low variance
+# Identify and remove variables without or with low variance
 zvar <- tbl %>% caret::nzv()
-cat(paste0('The following features were removed: ',names(tbl)[zvar], ' due to the low or insignificant variance\n'))
+cat(paste0('Removed features due to the low or null variance\n'))
+print(names(tbl)[zvar])
 tbl  <- tbl[,-zvar]; rm(zvar)
 
-## Replace the codes by the right categories to the *admission* variables
+# Replace the codes by the right categories to the *admission* variables
 # Load ID identifiers
 idi  <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/IDs_mapping.csv'), delim = ',')
 mtch <- which(is.na(idi$admission_type_id))
@@ -89,8 +90,8 @@ rm(idi, idi1, idi2, idi3)
 
 ## Omit Unknown category in gender
 # It only has 3 registers
-cat(paste0('Omit Unknown category in gender. The distribution of this feature is as follows\n'))
-table(tbl$gender)
+cat(paste0('Omit Unknown category in gender due to low variation\n'))
+print(table(tbl$gender))
 tbl$gender[grep(pattern = 'Unknown', x = tbl$gender)] <- NA
 
 ## Identify variables with more than 25% of missing data
@@ -98,7 +99,8 @@ msg <- tbl %>%
   apply(X = ., MARGIN = 2, function(x){sum(is.na(x))/nrow(.)}) %>%
   sort(decreasing = T) %>%
   .[. > 0.25]
-cat(paste0('The following features were removed: ',names(msg), ' due to high amount of missing data\n'))
+cat(paste0('Removed features due to high proportion of missing data\n'))
+print(names(msg))
 
 ## Remove variables with more than 25% of missing data
 tbl <- tbl[,-which(names(tbl) %in% names(msg))]; rm(msg)
@@ -126,7 +128,8 @@ tbl_dup <- 1:nrow(visits) %>%
 
 tbl <- rbind(tbl_dup, tbl_unq)
 # Number of unique patients
-cat(paste0('The number of unique patients after removing duplicated information is: ',nrow(tbl), '\n'))
+cat(paste0('Unique number of patients after removing duplicated information\n'))
+print(nrow(tbl))
 rm(tbl_dup, tbl_unq, unq_vs, visits)
 
 ## Transform character to factors
@@ -166,15 +169,12 @@ tbl$readmitted <- ifelse(test = tbl$readmitted %in% c('<30','>30'),
                          yes  = 1,
                          no   = 0)
 # Data proportion of response category
-cat(paste0('The data proportion in the response variable is as follows: \n'))
-table(tbl$readmitted)/nrow(tbl)
+cat(paste0('Response variable proportion\n'))
+print(table(tbl$readmitted)/nrow(tbl))
 
 # Remove ID variables
 tbl$encounter_id <- NULL
 tbl$patient_nbr  <- NULL
-
-# Quick summary of the data
-summary(tbl)
 
 # Transform categorical variables to dummies 
 tbl_num <- tbl %>% fastDummies::dummy_cols(ignore_na = T)
@@ -190,101 +190,108 @@ tbl_num <- tbl_num %>%
                 `A1Cresult_>7`:diabetesMed_Yes,
                 readmitted)
 
-# Proportion of complete observations
-nrow(tbl_num[complete.cases(tbl_num),])/nrow(tbl_num)
+# Based on the proportion of complete observations which is 82%
+# the final decision is not impute missing data
+cat('Proportion of complete observations\n')
+print(nrow(tbl_num[complete.cases(tbl_num),])/nrow(tbl_num))
 
 tbl_num_full <- tbl_num %>% tidyr::drop_na()
 
 # Data proportion of response category
-cat(paste0('The data proportion in the response variable, leaving just complete data is as follows: \n'))
-table(tbl_num_full$readmitted)/nrow(tbl_num_full)
+cat(paste0('Response variable proportion\n'))
+print(table(tbl_num_full$readmitted)/nrow(tbl_num_full))
 
 ## Identify and remove categories without or with low variance
 zvar <- tbl_num_full %>% caret::nzv()
+cat('Dummy categories without or with low variance\n')
+print(names(tbl_num_full)[zvar])
 tbl_num_full <- tbl_num_full[,-zvar]; rm(zvar)
 
 out_dir <- paste0(getwd(),'/processed_data')
 if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
 
-vroom::vroom_write(x = tbl, paste0(out_dir,'/diabetic_data_processed_1.csv'), delim = ',')
-vroom::vroom_write(x = tbl_num, paste0(out_dir,'/diabetic_data_processed_2.csv'), delim = ',')
-vroom::vroom_write(x = tbl_num_full, paste0(out_dir,'/diabetic_data_processed_2_complete.csv'), delim = ',')
+if(!file.exists(paste0(out_dir,'/diabetic_data_processed_1.csv'))){
+  vroom::vroom_write(x = tbl, paste0(out_dir,'/diabetic_data_processed_1.csv'), delim = ',')
+}
+if(!file.exists(paste0(out_dir,'/diabetic_data_processed_2.csv'))){
+  vroom::vroom_write(x = tbl_num, paste0(out_dir,'/diabetic_data_processed_2.csv'), delim = ',')
+}
+if(!file.exists(paste0(out_dir,'/diabetic_data_processed_2_complete.csv'))){
+  vroom::vroom_write(x = tbl_num_full, paste0(out_dir,'/diabetic_data_processed_2_complete.csv'), delim = ',')
+}
+rm(out_dir)
 
 ## --------------------------------------------------- ##
 ## Exploratory Data Analysis
 ## --------------------------------------------------- ##
 
-cor2
+skimr::skim(tbl)
 
+## --------------------------------------------------- ##
+## Correlation Analysis
+## --------------------------------------------------- ##
 
-tbl_num_full_sp <- tbl_num_full[,-ncol(tbl_num_full)]
-tbl_num_less_30 <- tbl_num_full[tbl_num_full$readmitted == '<30',]
-tbl_num_less_30$readmitted <- NULL
-tbl_num_less_30 <- tbl_num_less_30[,-caret::nzv(tbl_num_less_30)]
-tbl_num_more_30 <- tbl_num_full[tbl_num_full$readmitted == '>30',]
-tbl_num_more_30$readmitted <- NULL
-tbl_num_more_30 <- tbl_num_more_30[,-caret::nzv(tbl_num_more_30)]
-tbl_num_no_rdms <- tbl_num_full[tbl_num_full$readmitted == 'NO',]
-tbl_num_no_rdms$readmitted <- NULL
-tbl_num_no_rdms <- tbl_num_no_rdms[,-caret::nzv(tbl_num_no_rdms)]
+# Taken from https://gist.github.com/talegari/b514dbbc651c25e2075d88f31d48057b
+source(paste0(getwd(),'/scripts/cor2_modified.R'))
 
-cmat_less30 <- tbl_num_less_30 %>%
-  dplyr::select(names(tbl_num_more_30)) %>%
-  cor(method = 'spearman')
-cmat_more30 <- tbl_num_more_30 %>%
-  cor(method = 'spearman')
-cmat_nordsm <- tbl_num_no_rdms %>%
-  dplyr::select(names(tbl_num_more_30)) %>%
-  cor(method = 'spearman')
-
-mantel.test(cmat_less30, cmat_more30, nperm = 999, graph = T)
-mantel.test(cmat_less30, cmat_nordsm, nperm = 999, graph = T)
-mantel.test(cmat_more30, cmat_nordsm, nperm = 999, graph = T)
-
-cmat_less30 %>%
-  corrplot()
+m <- cor2(df = tbl_num_full)
+corrplot::corrplot(m,
+                   type   = "upper",
+                   method = "square",
+                   order  = "hclust",
+                   col    = brewer.pal(n = 8, name = "RdBu"),
+                   tl.cex	= .5)
 
 ## --------------------------------------------------- ##
 ## Feature selection
 ## --------------------------------------------------- ##
 
-future::plan(multiprocess, workers = future::availableCores()-1)
+out_dir <- paste0(getwd(),'/results')
+if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
+if(!file.exists(paste0(out_dir,'/feature_selection_simulation.csv'))){
+  
+  # Generate a local cluster of processors
+  future::plan(multiprocess, workers = future::availableCores()-1)
+  # Define a seed to do the results replicable
+  set.seed(1)
+  # Generate 20 random seeds from a uniform distribution
+  seeds <- round(runif(20) * 1000, 0)
+  # Run Boruta algorithm of feature selection using 20
+  # random subsets of 2000 patients information and
+  # save final decision: features CONFIRMED, TENTATIVE,
+  # and REJECTED
+  selected_fts <- seeds %>%
+    furrr::future_map(.f = function(seed){
+      # Fix each seed
+      set.seed(seed)
+      # Obtain a random sample without replacement of 2000 observations
+      smp <- sample(x = 1:nrow(tbl_num_full), size = 2000, replace = F)
+      # Run Boruta algorithm of feature selection over this random sample
+      fts <- Boruta::Boruta(formula = readmitted ~ ., data = tbl_num_full[smp,])
+      # Get the final decision
+      res <- fts$finalDecision
+      return(res)
+    })
+  
+  fts <- selected_fts %>% as.data.frame()
+  fts$Feature <- rownames(fts)
+  rownames(fts) <- 1:nrow(fts)
+  colnames(fts)[1:20] <- paste0('Run_',1:20)
+  
+  write.csv(fts, paste0(out_dir,'/feature_selection_simulation.csv'), row.names = F)
+} else {
+  fts <- read.csv(paste0(out_dir,'/feature_selection_simulation.csv'))
+}
 
-set.seed(1)
-seeds <- round(runif(20) * 1000, 0)
-
-selected_fts <- seeds %>%
-  furrr::future_map(.f = function(seed){
-    set.seed(seed)
-    smp <- sample(x = 1:nrow(tbl_num_full), size = 2000, replace = F)
-    fts <- Boruta::Boruta(formula = readmitted ~ ., data = tbl_num_full[smp,])
-    res <- fts$finalDecision
-    return(res)
-  })
-
-# set.seed(1)
-# seeds <- round(runif(20) * 1000, 0)
-# selected_fts <- seeds %>%
-#   purrr::map(.f = function(seed){
-#     set.seed(seed)
-#     smp <- sample(x = 1:nrow(tbl_num_full_bin), size = 2000, replace = F)
-#     fts <- Boruta::Boruta(formula = readmitted ~ ., data = tbl_num_full_bin[smp,])
-#     res <- fts$finalDecision
-#     return(res)
-#   })
-
-fts <- selected_fts %>% as.data.frame()
-fts$Feature <- rownames(fts)
-rownames(fts) <- 1:nrow(fts)
-colnames(fts)[1:20] <- paste0('Run_',1:20)
 fts %>%
   tidyr::pivot_longer(cols = Run_1:Run_20) %>%
   dplyr::group_by(Feature, value) %>%
   dplyr::summarise(Count = n()) %>%
-  dplyr::filter(!(value == 'Rejected' & Count == 20)) %>%
-  ggplot2::ggplot(aes(x = reorder(Feature, -Count), y = Count, fill = value)) +
+  ggplot2::ggplot(aes(x = Feature, y = Count, fill = value)) +
+  ggplot2::scale_fill_brewer(palette = 'Set1', direction = -1) +
   ggplot2::geom_bar(stat = 'identity') +
-  ggplot2::coord_flip()
+  ggplot2::coord_flip() +
+  ggplot2::labs(fill = 'Decision')
 
 fnl_fst <- fts %>%
   tidyr::pivot_longer(cols = Run_1:Run_20) %>%
@@ -296,6 +303,8 @@ fnl_fst <- fts %>%
   dplyr::filter(Decision %in% c('Confirmed','Tentative')) %>%
   dplyr::pull(Feature)
 fnl_fst[1] <- gsub('\`','',fnl_fst[1])
+cat('Selected features from Boruta algorithm\n')
+print(fnl_fst)
 
 tbl_num_sel_bin <- tbl_num_full_bin[,c(fnl_fst,'readmitted')]
 
