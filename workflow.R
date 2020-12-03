@@ -15,7 +15,8 @@ suppressMessages(pacman::p_load(tidyverse, vroom, psych,
                                 ranger, fastcluster, sparklyr,
                                 fastDummies, ape, Boruta,
                                 future, future.apply, furrr,
-                                lsr, RColorBrewer, DT, skimr))
+                                lsr, RColorBrewer, DT, skimr,
+                                naniar, ggrepel))
 
 ## --------------------------------------------------- ##
 ## Data obtention
@@ -101,6 +102,8 @@ msg <- tbl %>%
   .[. > 0.25]
 cat(paste0('Removed features due to high proportion of missing data\n'))
 print(msg)
+
+naniar::vis_miss(tbl, warn_large_data = F)
 
 ## Remove variables with more than 25% of missing data
 tbl <- tbl[,-which(names(tbl) %in% names(msg))]; rm(msg)
@@ -255,6 +258,41 @@ corrplot::corrplot(m,
                    col    = brewer.pal(n = 8, name = "RdBu"),
                    tl.cex	= .5)
 
+# PCA analysis
+if(FALSE){
+  sc      <- sparklyr::spark_connect(master = 'local')
+  tbl_spk <- sparklyr::copy_to(sc, tbl_num_full, overwrite = T)
+  pca_mdl <- sparklyr::ml_pca(tbl_spk)
+  print(pca_mdl)
+  cc <- pca_mdl$pc %>% base::as.data.frame()
+  plot(cc[,1:2], xlim = c(-1, 1), ylim = c(-1, 1))
+  
+  # Taken from: https://www.researchgate.net/deref/http%3A%2F%2Fdx.doi.org%2F10.13140%2FRG.2.2.33337.26720
+  circleFun <- function(center = c(0,0),diameter = 1, npoints = 100){
+    r = diameter / 2
+    tt <- seq(0,2*pi,length.out = npoints)
+    xx <- center[1] + r * cos(tt)
+    yy <- center[2] + r * sin(tt)
+    return(data.frame(x = xx, y = yy))
+  }
+  circ <- circleFun(c(0,0),2,npoints = 500)
+  vars.p <- ggplot() +
+    geom_path(data = circ, aes(x, y), lty = 2, color = "grey", alpha = 0.7) +
+    geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
+    geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
+    geom_segment(data = cc, aes(x = 0, xend = PC1, y = 0, yend = PC2), arrow = arrow(length = unit(0.025, "npc"), type = "open"), lwd = 0.5) +
+    geom_text_repel(data = cc[(cc$PC1 < -0.1)|(cc$PC1 > 0.1)|(cc$PC2 < -0.1)|(cc$PC2 > 0.1),], aes(x = PC1 * 1.1, y = PC2 * 1.1, label = rownames(cc[(cc$PC1 < -0.1)|(cc$PC1 > 0.1)|(cc$PC2 < -0.1)|(cc$PC2 > 0.1),]), check_overlap = T, size = 1)) +
+    xlab("PC 1") +
+    ylab("PC 2") +
+    coord_equal() +
+    labs(size = NULL) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(fill = "transparent"),
+          legend.position = "none")
+  vars.p
+}
+
 ## --------------------------------------------------- ##
 ## Feature selection
 ## --------------------------------------------------- ##
@@ -319,172 +357,58 @@ fnl_fst[1] <- gsub('\`','',fnl_fst[1])
 cat('Selected features from Boruta algorithm\n')
 print(fnl_fst)
 
-tbl_num_sel_bin <- tbl_num_full_bin[,c(fnl_fst,'readmitted')]
+tbl_num_full_sel <- tbl_num_full[,c(fnl_fst,'readmitted')]
+
+## --------------------------------------------------- ##
+## Classification analysis
+## --------------------------------------------------- ##
 
 ## Spark connection
+if(!exists('sc')){
+  sc <- sparklyr::spark_connect(master = 'local')
+}
+tbl_num_full_sel_spk <- sparklyr::copy_to(sc, tbl_num_full_sel, overwrite = T)
 
-sc <- sparklyr::spark_connect(master = 'local')
-
-tbl_spk    <- sparklyr::copy_to(sc, tbl_num_full_bin, overwrite = T)
-partitions <- tbl_spk %>%
+# Define partitions of the dataset: 70% for training, 30% for testing
+partitions <- tbl_num_full_sel_spk %>%
   sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
 
-tbl_fnl_spk <- sparklyr::copy_to(sc, tbl_num_sel_bin, overwrite = T)
-partitions2 <- tbl_fnl_spk %>%
-  sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
+# Fit a logistic regression model
+fit_log <- partitions$training %>% ml_logistic_regression(readmitted ~ .)
+prd_log <- ml_predict(fit_log, partitions$test)
+ml_binary_classification_evaluator(x = prd_log, label_col = 'readmitted', raw_prediction_col = 'prediction')
 
-# Perform PCA
-pca_model <- sparklyr::ml_pca(partitions$training)
-print(pca_model)
-pca_model$model$pc %>% View()
+log_sum <- ml_evaluate(fit_log, partitions$test)
+log_roc <- log_sum$roc() %>% collect()
 
-tbl_less_30_spk <- sparklyr::copy_to(sc, tbl_num_less_30, overwrite = T)
-tbl_more_30_spk <- sparklyr::copy_to(sc, tbl_num_more_30, overwrite = T)
-tbl_no_rdms_spk <- sparklyr::copy_to(sc, tbl_num_no_rdms, overwrite = T)
+ggplot(roc, aes(x = FPR, y = TPR)) +
+  geom_line() + geom_abline(lty = "dashed")
 
-pca_less_30 <- sparklyr::ml_pca(tbl_less_30_spk)
-pca_less_30$explained_variance %>% head(4)
-r_less_30 <- pca_less_30$pc %>% as.data.frame %>% .[,1:5]
-r_less_30$variable <- rownames(r_less_30)
-r_less_30$readmitted <- '<30'
+# Fit a decision tree model
+fit_dct <- partitions$training %>% ml_decision_tree(readmitted ~ .)
+prd_dct <- ml_predict(fit_dct, partitions$test)
+ml_binary_classification_evaluator(x = prd_dct, label_col = 'readmitted', raw_prediction_col = 'prediction')
 
-pca_more_30 <- sparklyr::ml_pca(tbl_more_30_spk)
-pca_more_30$explained_variance %>% head(4)
-r_more_30 <- pca_more_30$pc %>% as.data.frame %>% .[,1:5]
-r_more_30$variable <- rownames(r_more_30)
-r_more_30$readmitted <- '>30'
+# Fit a random forest model
+fit_rdf <- partitions$training %>% ml_random_forest(readmitted ~ .)
+prd_rdf <- ml_predict(fit_rdf, partitions$test)
+ml_binary_classification_evaluator(x = prd_rdf, label_col = 'readmitted', raw_prediction_col = 'prediction')
 
-pca_no_rdms <- sparklyr::ml_pca(tbl_no_rdms_spk)
-pca_no_rdms$explained_variance %>% head(4)
-r_no_rdms <- pca_no_rdms$pc %>% as.data.frame %>% .[,1:5]
-r_no_rdms$variable <- rownames(r_no_rdms)
-r_no_rdms$readmitted <- 'NO'
+# Fit a gradient boosting trees model
+fit_gbt <- partitions$training %>% ml_gradient_boosted_trees(readmitted ~ .)
+prd_gbt <- ml_predict(fit_gbt, partitions$test)
+ml_binary_classification_evaluator(x = prd_gbt, label_col = 'readmitted', raw_prediction_col = 'prediction')
 
-r_pca <- rbind(r_less_30, r_more_30, r_no_rdms)
+# Fit a naive Bayes model
+fit_nvb <- partitions$training %>% ml_naive_bayes(readmitted ~ .)
+prd_nvb <- ml_predict(fit_nvb, partitions$test)
+ml_binary_classification_evaluator(x = prd_nvb, label_col = 'readmitted', raw_prediction_col = 'prediction')
 
-r_pca %>%
-  ggplot(aes(x = reorder(variable, -PC2), y = PC2)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  facet_wrap(~readmitted)
-
-# Fit a linear model to the training dataset
-fit <- partitions$training %>%
-  ml_logistic_regression(readmitted ~ .)
-
-fit
-
-pred <- ml_predict(fit, partitions$test)
-ml_binary_classification_eval(pred)
-
-# Fit a linear model to the training dataset selected features
-fit2 <- partitions2$training %>%
-  dplyr::select(-number_visits) %>%
-  ml_logistic_regression(readmitted ~ .)
-
-fit2$coefficients
-
-pred2 <- ml_predict(fit2, partitions2$test)
-ml_binary_classification_eval(pred2)
-
-# Fit a GBM model to the training dataset selected features
-gbm_fit <- partitions2$training %>%
-  sparklyr::ml_gradient_boosted_trees(readmitted ~ .)
-
-pred3 <- ml_predict(gbm_fit, partitions2$test)
-ml_binary_classification_eval(x = pred3, label_col = 'readmitted', prediction_col = "prediction")
-
-ml_binary_classification_evaluator(x = pred2, label_col = 'readmitted', raw_prediction_col = 'prediction')
-ml_binary_classification_evaluator(x = pred3, label_col = 'readmitted', raw_prediction_col = 'prediction')
-
-
-ml_multiclass_classification_evaluator(pred)
-
-
-pat_no <- tbl_cmp %>%
-  dplyr::filter(readmitted == 'NO')
-pat_no$readmitted <- NULL
-dst_no <- pat_no %>% daisy(x = ., metric="gower")
-
-pat_less_30 <- tbl_cmp %>%
-  dplyr::filter(readmitted == '<30')
-pat_less_30$readmitted <- NULL
-
-
-pat_more_30 <- tbl_cmp %>%
-  dplyr::filter(readmitted == '>30')
-pat_more_30$readmitted <- NULL
-
-
-fastcluster::hclust()
-
+# K-means model
+kmeans_model <- tbl_num_full_sel_spk %>%
+  ml_kmeans(k = 2,
+            readmitted ~ .)
+predicted <- ml_predict(kmeans_model, tbl_num_full_sel_spk) %>% collect
+table(predicted$readmitted, predicted$prediction)
 
 spark_disconnect(sc)
-
-# tst <- tbl[complete.cases(tbl),] %>% base::as.data.frame()
-# # cor2(df = tst)
-# 
-# # Numeric variables
-# colnames(tbl[sapply(tbl, is.numeric)])
-# tbl[sapply(tbl, is.numeric)] %>%
-#   cor(use = 'pairwise.complete.obs', method = 'spearman') %>%
-#   corrplot::corrplot.mixed()
-# 
-# # Categorical variables
-# cat_vars <- tbl[sapply(tbl, is.factor)]
-# cat_vars <- cat_vars[complete.cases(cat_vars),]
-# cat_vars <- cat_vars %>% as.data.frame()
-# p.chisq <- matrix(0, nrow = ncol(cat_vars), ncol = ncol(cat_vars), byrow = T)
-# for(i in 1:ncol(cat_vars)){
-#   for(j in 1:ncol(cat_vars)){
-#     p.chisq[i,j] <- round(chisq.test(cat_vars[,i],cat_vars[,j])$p.value,3)
-#   }
-# }; rm(i); rm(j)
-# 
-# diag(p.chisq) <- 1
-# colnames(p.chisq) <- colnames(cat_vars)
-# rownames(p.chisq) <- colnames(cat_vars)
-# 
-# ord <- p.chisq %>%
-#   corrplot::corrMatOrder(order = 'AOE')
-# 
-# p.chisq2 <- p.chisq[ord,ord]
-# corrplot::corrplot.mixed(p.chisq2)
-# 
-# # Select just complete data
-# tbl_cmp <- tbl[complete.cases(tbl),]
-# ids     <- tbl_cmp[,1:2]
-# tbl_cmp <- tbl_cmp[,-c(1:2)]
-# 
-# # modelr::crossv_kfold()
-# train_control<- caret::trainControl(method = "cv",
-#                                     number = 10,
-#                                     savePredictions = TRUE)
-# 
-# library(doParallel)
-# cl <- makePSOCKcluster(3)
-# registerDoParallel(cl)
-# 
-# model <- caret::train(readmitted ~ ., data=tbl_cmp, trControl=train_control, method = "gbm")
-# 
-# stopCluster(cl)
-# 
-# set.seed(1235)
-# inTrain <- caret::createDataPartition(y = tbl_cmp$readmitted, p = 0.7, list = FALSE)
-# training <- tbl_cmp[inTrain,]
-# testing  <- tbl_cmp[-inTrain,]
-# 
-# control_prmt <- caret::trainControl(method          = "LGOCV",
-#                                     p               = 0.7,
-#                                     number          = 10,
-#                                     savePredictions = "final",
-#                                     verboseIter     = TRUE)
-# 
-# model_list <- caretEnsemble::caretList(
-#     readmitted ~ .,
-#     data       = training,
-#     trControl  = control_prmt,
-#     tuneList   = list(ranger = caretModelSpec(method = "ranger", importance = "impurity")),
-#     methodList = c("svmRadial", "gbm", "cforest", "hdda", "xgbTree", "xgbLinear")
-#   )
-```

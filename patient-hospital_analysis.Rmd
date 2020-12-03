@@ -26,7 +26,8 @@ suppressMessages(pacman::p_load(tidyverse, vroom, psych,
                                 ranger, fastcluster, sparklyr,
                                 fastDummies, ape, Boruta,
                                 future, future.apply, furrr,
-                                lsr, RColorBrewer, DT, skimr))
+                                lsr, RColorBrewer, DT, skimr,
+                                naniar))
 ```
 
 The structure of this notebook is divided in the following sections: data obtention, data pre-processing, descriptive analysis, correlation analysis, feature selection, and models fitting to identify the main drivers.
@@ -136,6 +137,8 @@ msg <- tbl %>%
   .[. > 0.25]
 cat(paste0('Removed features due to high proportion of missing data\n'))
 print(msg)
+
+naniar::vis_miss(tbl, warn_large_data = F)
 
 ## Remove variables with more than 25% of missing data
 tbl <- tbl[,-which(names(tbl) %in% names(msg))]; rm(msg)
@@ -288,14 +291,17 @@ skimr::skim(tbl)
 
 EDA highlights:
 
-* 
+* In average the number of days of hospitalization is around 4
+* The number of laboratory procedures, general procedures, medications, outpatient, emergency, and inpatient numbers, are positive skewed
 * The number of confirmed diagnoses range between 1 and 16 with a median of 8 diagnoses
 * The number of visits to the hospital network is positive skewed which means the majority of patients visits just one time. And just a few proportion visits more than once
 * 75% of the patients are more than 55 years old
 
 ## 4. Correlation Analysis
 
-The correlation analysis look to see if there are some grouping among features in terms of positive or negative correlations. Specifically, all the 
+The correlation analysis explore the association between all of different pairs of variables in the dataset. This step is very important to discard some highly correlated features before the classification analysis.
+
+The correlation analysis was carried out using the dataset with transformed features (dummy variables instead of the original categorical data) using the Spearman non-parametric correlation. This coefficient explores monotonic association but not necessarily linear as the Pearson correlation does.
 
 ```{r corr, include = TRUE}
 ## --------------------------------------------------- ##
@@ -322,16 +328,21 @@ corrplot::corrplot(m,
                    tl.cex	= .5)
 ```
 
+As can be observed in the matrix correlation there are some weak positive and negative correlations among the features in the dataset, specifically in the categories of the treatments applied.
+
 ## 5. Feature Selection
 
-One important step before studying the factors that insides in the readmission condition, is to identify which are the features that contributes the most to explain the response variable.
+One important step before studying the factors that insides in the readmission condition is to identify which are the features that contributes the most to explain the response variable.
 
 This process is done by the application of the [Boruta algorithm](https://www.jstatsoft.org/article/view/v036i11) which uses Random Forest models to quantify the importance of each predictor variable to explain the response variable. And finally, giving a three category response per variable. The categories are: Confirmed, Tentative, or Rejected.
 
 Despite, it is not possible to apply this algorithm over the full dataset considering the machine resources. The approach followed consists in:
 
 * Generate 20 random samples of 2000 patient observations
-* 
+* Over each random sample run the Boruta algorithm
+* Obtain the final decision per variable
+* Using the 20 results create a frequency table getting the decision category with the maximum absolute frequency
+* Select the features which have the levels: Confirmed and Tentative
 
 ```{r fselection, include = TRUE}
 ## --------------------------------------------------- ##
@@ -380,7 +391,7 @@ fts %>%
   dplyr::group_by(Feature, value) %>%
   dplyr::summarise(Count = n()) %>%
   ggplot2::ggplot(aes(x = Feature, y = Count, fill = value)) +
-  ggplot2::scale_fill_brewer(palette = 'Set1', direction = -1) +
+  ggplot2::scale_fill_brewer(palette = 'Set1') +
   ggplot2::geom_bar(stat = 'identity') +
   ggplot2::coord_flip() +
   ggplot2::labs(fill = 'Decision')
