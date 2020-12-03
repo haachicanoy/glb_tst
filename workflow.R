@@ -1,10 +1,12 @@
-## Steps to follow
-
-# 9. Having a good database I have to:
-#   - Define how to balance the unbalanced class: downsampling, upsampling, mixed approach
-#   - Identify and check outliers
-#   - Classification model: 
-#   - Clustering analysis: k-means
+# Next steps
+# 1. Increase number of trees or iterations for ML models
+# 2. Obtain AUC for training and testing per model
+# 3. Do a barplot in ggplot2 to select the model with the best performance
+# 4. With the selected model obtain feature importance using DALEX
+# 5. Describe two patient-cases using breakDown lib:
+#    - One patient with just one visit to the hospital
+#    - Another patient with the maximum number of visits in the testing dataset
+# 6. Write conclusions
 
 # R options
 options(warn = -1, scipen = 999)
@@ -16,7 +18,8 @@ suppressMessages(pacman::p_load(tidyverse, vroom, psych,
                                 fastDummies, ape, Boruta,
                                 future, future.apply, furrr,
                                 lsr, RColorBrewer, DT, skimr,
-                                naniar, ggrepel))
+                                naniar, ggrepel, DALEX,
+                                breakDown))
 
 ## --------------------------------------------------- ##
 ## Data obtention
@@ -239,6 +242,8 @@ skimr::skim(tbl)
 ## Correlation Analysis
 ## --------------------------------------------------- ##
 
+tbl_num_full <- vroom::vroom('./processed_data/diabetic_data_processed_2_complete.csv', delim = ',')
+
 # This function approximates the correlation calculation for
 # mixed variables (numerical and categorical). The following
 # cases are considered:
@@ -365,7 +370,7 @@ tbl_num_full_sel <- tbl_num_full[,c(fnl_fst,'readmitted')]
 
 ## Spark connection
 if(!exists('sc')){
-  sc <- sparklyr::spark_connect(master = 'local')
+  sc <- sparklyr::spark_connect(master = 'local', version = '3.0.1')
 }
 tbl_num_full_sel_spk <- sparklyr::copy_to(sc, tbl_num_full_sel, overwrite = T)
 
@@ -381,28 +386,90 @@ ml_binary_classification_evaluator(x = prd_log, label_col = 'readmitted', raw_pr
 log_sum <- ml_evaluate(fit_log, partitions$test)
 log_roc <- log_sum$roc() %>% collect()
 
-ggplot(roc, aes(x = FPR, y = TPR)) +
+ggplot(log_roc, aes(x = FPR, y = TPR)) +
   geom_line() + geom_abline(lty = "dashed")
 
 # Fit a decision tree model
-fit_dct <- partitions$training %>% ml_decision_tree(readmitted ~ .)
+fit_dct <- partitions$training %>% ml_decision_tree(readmitted ~ ., type = 'classification')
 prd_dct <- ml_predict(fit_dct, partitions$test)
 ml_binary_classification_evaluator(x = prd_dct, label_col = 'readmitted', raw_prediction_col = 'prediction')
 
+dct_sum <- ml_evaluate(fit_dct, partitions$test)
+# dct_roc <- dct_sum$roc() %>% collect()
+# 
+# ggplot(log_roc, aes(x = FPR, y = TPR)) +
+#   geom_line() + geom_abline(lty = "dashed")
+
 # Fit a random forest model
-fit_rdf <- partitions$training %>% ml_random_forest(readmitted ~ .)
+fit_rdf <- partitions$training %>% ml_random_forest(readmitted ~ ., type = 'classification')
 prd_rdf <- ml_predict(fit_rdf, partitions$test)
 ml_binary_classification_evaluator(x = prd_rdf, label_col = 'readmitted', raw_prediction_col = 'prediction')
 
+rdf_sum <- ml_evaluate(fit_rdf, partitions$test)
+# rdf_roc <- log_rdf$roc() %>% collect()
+# 
+# ggplot(log_roc, aes(x = FPR, y = TPR)) +
+#   geom_line() + geom_abline(lty = "dashed")
+
 # Fit a gradient boosting trees model
-fit_gbt <- partitions$training %>% ml_gradient_boosted_trees(readmitted ~ .)
+fit_gbt <- partitions$training %>% ml_gradient_boosted_trees(readmitted ~ ., type = 'classification')
 prd_gbt <- ml_predict(fit_gbt, partitions$test)
 ml_binary_classification_evaluator(x = prd_gbt, label_col = 'readmitted', raw_prediction_col = 'prediction')
+
+gbt_sum <- ml_evaluate(fit_gbt, partitions$test)
+
+# Test DALEX
+Test.local <- partitions$test %>% collect()
+custom_predict <- function(model, new_data){
+  
+  new_data_spark <- copy_to(sc, new_data, name="spark_temp1b3c4e6", overwrite = T)
+  spark_tbl_scored <- ml_predict(model, new_data_spark)
+  res <- as.numeric(as.data.frame(spark_tbl_scored %>% select(prediction) %>% collect())$prediction)
+  # dplyr::db_drop_table(con = sc, table = "spark_temp1b3c4e6")
+  
+  return(res)
+}
+TEST.scored2 <- custom_predict(fit_gbt, Test.local)
+
+## explain
+explainer_spark_cv_rf <- explain(model            = fit_gbt,
+                                 data             = Test.local %>% select(-readmitted),
+                                 y                = Test.local$readmitted,
+                                 predict_function = custom_predict,
+                                 label            = 'Spark Gradient Boosting Trees',
+                                 type             = 'classification')
+
+## model performance
+mp_spark_cv_rf <- model_performance(explainer_spark_cv_rf)
+
+mp_spark_cv_rf
+
+plot(mp_spark_cv_rf)
+
+plot(mp_spark_cv_rf, geom='boxplot')
+
+## variable importance
+vi_spark_cv_rf <- variable_importance(explainer_spark_cv_rf)
+
+plot(vi_spark_cv_rf)
+
+## prediction understanding
+sample_row <- Test.local[1,]
+sample_row2 <- Test.local[17039,]
+pd_spark_cv_rf <- breakDown::break_down(explainer_spark_cv_rf, new_observation = sample_row)
+pd_spark_cv_rf2 <- breakDown::break_down(explainer_spark_cv_rf, new_observation = sample_row2)
+plot(pd_spark_cv_rf)
+plot(pd_spark_cv_rf2)
 
 # Fit a naive Bayes model
 fit_nvb <- partitions$training %>% ml_naive_bayes(readmitted ~ .)
 prd_nvb <- ml_predict(fit_nvb, partitions$test)
 ml_binary_classification_evaluator(x = prd_nvb, label_col = 'readmitted', raw_prediction_col = 'prediction')
+
+# Fit a neural network
+fit_ann <- partitions$training %>% ml_multilayer_perceptron_classifier(readmitted ~ ., layers = c(13, 64, 64, 2))
+prd_ann <- ml_predict(fit_ann, partitions$test)
+ml_binary_classification_evaluator(prd_ann)
 
 # K-means model
 kmeans_model <- tbl_num_full_sel_spk %>%
