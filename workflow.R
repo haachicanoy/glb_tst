@@ -1,8 +1,3 @@
-# Next steps
-# 5. Describe two patient-cases using breakDown lib:
-#    - One patient with just one visit to the hospital
-#    - Another patient with the maximum number of visits in the testing dataset
-# 6. Write conclusions
 
 # R options
 options(warn = -1, scipen = 999)
@@ -15,24 +10,24 @@ suppressMessages(pacman::p_load(tidyverse, vroom, psych,
                                 future, future.apply, furrr,
                                 lsr, RColorBrewer, DT, skimr,
                                 naniar, ggrepel, DALEX,
-                                breakDown, pdp, png))
+                                breakDown, pdp, png, knitr))
 
 ## --------------------------------------------------- ##
 ## Data obtention
 ## --------------------------------------------------- ##
 
-if(!file.exists(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'))){
+if(!file.exists('./dataset_diabetes/diabetic_data.csv')){
   # Download data
   url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/00296/dataset_diabetes.zip'
   download.file(url, destfile = paste0(getwd(),'/dataset_diabetes.zip'))
   # Unzip files
-  unzip(paste0(getwd(),'/dataset_diabetes.zip'))
-  file.remove(paste0(getwd(),'/dataset_diabetes.zip'))
+  unzip('./dataset_diabetes.zip')
+  file.remove('./dataset_diabetes.zip')
   # Load the data
-  tbl <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'), delim = ',')
+  tbl <- vroom::vroom('./dataset_diabetes/diabetic_data.csv', delim = ',')
 } else {
   # Load the data
-  tbl <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'), delim = ',')
+  tbl <- vroom::vroom('./dataset_diabetes/diabetic_data.csv', delim = ',')
 }
 # Replace '?' character by NA's
 tbl <- tbl %>% dplyr::na_if(y = '?')
@@ -51,7 +46,7 @@ tbl  <- tbl[,-zvar]; rm(zvar)
 
 # Replace the codes by the right categories to the *admission* variables
 # Load ID identifiers
-idi  <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/IDs_mapping.csv'), delim = ',')
+idi  <- vroom::vroom('./dataset_diabetes/IDs_mapping.csv', delim = ',')
 mtch <- which(is.na(idi$admission_type_id))
 # admision_type_id
 idi1 <- idi[1:(mtch[1]-1),]
@@ -198,6 +193,7 @@ cat('Proportion of complete observations\n')
 print(nrow(tbl_num[complete.cases(tbl_num),])/nrow(tbl_num))
 
 tbl_num_full <- tbl_num %>% tidyr::drop_na()
+tbl <- tbl %>% tidyr::drop_na()
 
 # Data proportion of response category
 cat(paste0('Response variable proportion\n'))
@@ -212,7 +208,7 @@ tbl_num_full <- tbl_num_full[,-zvar]; rm(zvar)
 cat(paste0('Dataset dimensions\n'))
 print(dim(tbl_num_full))
 
-out_dir <- paste0(getwd(),'/processed_data')
+out_dir <- './processed_data'
 if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
 
 if(!file.exists(paste0(out_dir,'/diabetic_data_processed_1.csv'))){
@@ -232,7 +228,18 @@ rm(out_dir)
 
 # This function brings a complete description of the dataset
 # for both categorical and numerical variables
-skimr::skim(tbl)
+skimr::skim(tbl %>% dplyr::select(-readmitted))
+tbl %>%
+  dplyr::select(readmitted) %>%
+  dplyr::mutate(readmitted = ifelse(readmitted == 1, 'Readmitted', 'No readmitted')) %>%
+  table() %>%
+  as.data.frame() %>%
+  dplyr::mutate(Perc = round(Freq/sum(Freq) * 100, 2)) %>% 
+  ggplot(aes_string(x = '.', y = 'Perc')) +
+  geom_bar(stat="identity", fill="steelblue")+
+  theme_minimal() +
+  geom_text(aes(label = Perc), vjust = 1.6, color = "white", size = 3.5) +
+  ylab('Percentage')
 
 ## --------------------------------------------------- ##
 ## Correlation Analysis
@@ -249,7 +256,7 @@ tbl_num_full <- vroom::vroom('./processed_data/diabetic_data_processed_2_complet
 # - Both variables categorical: Cramer's V test to measure
 # association between two nominal variables
 # Taken from https://gist.github.com/talegari/b514dbbc651c25e2075d88f31d48057b
-source(paste0(getwd(),'/scripts/cor2_modified.R'))
+source('./scripts/cor2_modified.R')
 
 m <- cor2(df = tbl_num_full)
 corrplot::corrplot(m,
@@ -298,7 +305,7 @@ if(FALSE){
 ## Feature selection
 ## --------------------------------------------------- ##
 
-out_dir <- paste0(getwd(),'/results')
+out_dir <- './results'
 if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
 if(!file.exists(paste0(out_dir,'/feature_selection_simulation.csv'))){
   
@@ -477,12 +484,13 @@ if(!(file.exists('./results/prediction_decomposition_obs1.png') &
   pd_spark_gbt2 <- breakDown::break_down(xpl_spark_gbt, new_observation = row_06560)
   plot(pd_spark_gbt1)
   plot(pd_spark_gbt2)
-} else {
-  bd1 <- './results/prediction_decomposition_obs1.png'
-  knitr::include_graphics(bd1)
-  bd2 <- './results/prediction_decomposition_obs2.png'
-  knitr::include_graphics(bd2)
 }
+
+bd1 <- './results/prediction_decomposition_obs1.png'
+knitr::include_graphics(bd1)
+
+bd2 <- './results/prediction_decomposition_obs2.png'
+knitr::include_graphics(bd2)
 
 if(exists('sc')){
   spark_disconnect(sc) 

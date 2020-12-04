@@ -1,5 +1,5 @@
 ---
-title: "The main drivers of readmission of diabetes patients"
+title: "Drivers of readmission of diabetes patients"
 author: "Harold Armando Achicanoy Estrella"
 date: "12/01/2020"
 output: html_document
@@ -11,7 +11,7 @@ The main objective of this analysis consists of identifying the variables that c
 
 Understanding the readmission process causes will help doctors to support decision making on how to address and treat diabetes patients.
 
-To address this objective the idea is to follow a data science process applying some data preparation, description, feature selection, and finally the execution of some classification models. Put some highlighted results.
+To address this objective the idea is to follow a data science process applying some data preparation, description, feature selection, and finally the execution of some classification models.
 
 The carried analysis uses the **[Spark 3.0.1](https://spark.apache.org)** general-purpose cluster computing system to run the classification models. The machine configuration is as follows: MacBook Pro (13-inch, Mid 2012), Processor: 2.5 GHz Intel Core i5, RAM: 16 GB.
 
@@ -28,10 +28,10 @@ suppressMessages(pacman::p_load(tidyverse, vroom, psych,
                                 future, future.apply, furrr,
                                 lsr, RColorBrewer, DT, skimr,
                                 naniar, ggrepel, DALEX,
-                                breakDown, pdp, png))
+                                breakDown, pdp, png, knitr))
 ```
 
-The structure of this notebook is divided in the following sections: data obtention, data pre-processing, descriptive analysis, correlation analysis, feature selection, and models fitting to identify the main drivers.
+The structure of this notebook is divided in the following sections: data obtention, data pre-processing, descriptive analysis, correlation analysis, feature selection, and classification analysis to identify the main drivers.
 
 ## 1. Data obtention
 
@@ -41,29 +41,28 @@ The first step consists in obtain the data from the web source, unzip the compre
 ## --------------------------------------------------- ##
 ## Data obtention
 ## --------------------------------------------------- ##
-if(!file.exists(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'))){
-  ## Download data
+
+if(!file.exists('./dataset_diabetes/diabetic_data.csv')){
+  # Download data
   url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/00296/dataset_diabetes.zip'
   download.file(url, destfile = paste0(getwd(),'/dataset_diabetes.zip'))
-  ## Unzip files
-  unzip(paste0(getwd(),'/dataset_diabetes.zip'))
-  file.remove(paste0(getwd(),'/dataset_diabetes.zip'))
-  ## Load the data
-  tbl <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'), delim = ',')
+  # Unzip files
+  unzip('./dataset_diabetes.zip')
+  file.remove('./dataset_diabetes.zip')
+  # Load the data
+  tbl <- vroom::vroom('./dataset_diabetes/diabetic_data.csv', delim = ',')
 } else {
-  ## Load the data
-  tbl <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/diabetic_data.csv'), delim = ',')
+  # Load the data
+  tbl <- vroom::vroom('./dataset_diabetes/diabetic_data.csv', delim = ',')
 }
-## Replace '?' character by NA's
+# Replace '?' character by NA's
 tbl <- tbl %>% dplyr::na_if(y = '?')
-```
 
-The dataset is conformed by 101766 patients-records with 50 attributes of information.
-
-```{r dimensions, include = TRUE}
 cat(paste0('Dataset dimensions\n'))
 print(dim(tbl))
 ```
+
+The dataset is conformed by 101766 patients-records with 50 attributes of information.
 
 ## 2. Data pre-processing
 
@@ -75,20 +74,44 @@ The data pre-processing steps consist in:
 * Identify and remove features with more than 25% of missing data
 * Check the data types
 * Create or modify variables
+* Transform categorical variables into dummy variables
 
 ```{r preprocessing, include = TRUE}
 ## --------------------------------------------------- ##
+## Data obtention
+## --------------------------------------------------- ##
+
+if(!file.exists('./dataset_diabetes/diabetic_data.csv')){
+  # Download data
+  url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/00296/dataset_diabetes.zip'
+  download.file(url, destfile = paste0(getwd(),'/dataset_diabetes.zip'))
+  # Unzip files
+  unzip('./dataset_diabetes.zip')
+  file.remove('./dataset_diabetes.zip')
+  # Load the data
+  tbl <- vroom::vroom('./dataset_diabetes/diabetic_data.csv', delim = ',')
+} else {
+  # Load the data
+  tbl <- vroom::vroom('./dataset_diabetes/diabetic_data.csv', delim = ',')
+}
+# Replace '?' character by NA's
+tbl <- tbl %>% dplyr::na_if(y = '?')
+
+cat(paste0('Dataset dimensions\n'))
+print(dim(tbl))
+
+## --------------------------------------------------- ##
 ## Data pre-processing
 ## --------------------------------------------------- ##
-## Identify and remove variables without or with low variance
+# Identify and remove variables without or with low variance
 zvar <- tbl %>% caret::nzv()
 cat(paste0('Removed features due to the low or null variance\n'))
 print(names(tbl)[zvar])
 tbl  <- tbl[,-zvar]; rm(zvar)
 
-## Replace the codes by the right categories to the *admission* variables
+# Replace the codes by the right categories to the *admission* variables
 # Load ID identifiers
-idi  <- vroom::vroom(paste0(getwd(),'/dataset_diabetes/IDs_mapping.csv'), delim = ',')
+idi  <- vroom::vroom('./dataset_diabetes/IDs_mapping.csv', delim = ',')
 mtch <- which(is.na(idi$admission_type_id))
 # admision_type_id
 idi1 <- idi[1:(mtch[1]-1),]
@@ -217,6 +240,7 @@ tbl$patient_nbr  <- NULL
 
 # Transform categorical variables to dummies 
 tbl_num <- tbl %>% fastDummies::dummy_cols(ignore_na = T)
+names(tbl_num)
 tbl_num <- tbl_num %>%
   dplyr::select(time_in_hospital:number_diagnoses,
                 number_visits,age_num,
@@ -234,6 +258,7 @@ cat('Proportion of complete observations\n')
 print(nrow(tbl_num[complete.cases(tbl_num),])/nrow(tbl_num))
 
 tbl_num_full <- tbl_num %>% tidyr::drop_na()
+tbl <- tbl %>% tidyr::drop_na()
 
 # Data proportion of response category
 cat(paste0('Response variable proportion\n'))
@@ -248,7 +273,7 @@ tbl_num_full <- tbl_num_full[,-zvar]; rm(zvar)
 cat(paste0('Dataset dimensions\n'))
 print(dim(tbl_num_full))
 
-out_dir <- paste0(getwd(),'/processed_data')
+out_dir <- './processed_data'
 if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
 
 if(!file.exists(paste0(out_dir,'/diabetic_data_processed_1.csv'))){
@@ -266,15 +291,15 @@ rm(out_dir)
 The important highlights is this section are:
 
 * 18 features removed due to near zero variability
-* 3 features removed due to high percentage of missing data
+* 3 features removed due to high percentage of missing data: weight (96.86% missing data), medical specialty (49.08%), and payer code (39.56%)
 * Multiple records per patient are present in the dataset. That represents multiple visits to the hospital network. These records were summarized in just one per patient. Selecting the record with the maximum number of days interned in the hospital and creating a new variable called: *number_visits*
 * 71518 unique patient records obtained after removing duplicate records per patient
 * Age numerical variable obtained using the midpoint of the age categorical intervals
 * The first three diagnoses which are categorical variables with more than 700 categories were discarded. The variable *number_diagnoses* captures the sum of all of detected diagnoses
-* The people classified as Expired or Hospiced were omitted from the analysis due to they can not be readmitted
+* The people classified as Expired or in Hospice were omitted from the analysis due to they can not be readmitted
 * The response variable was transformed to binary output. Considering that the readmission before and after 30 days are both bad situations for a patient. The analysis will be carried out using a binary classification, merging the readmissions before and after 30 days in one category
 * The proportion of the response variables is: readmitted (35%) vs no readmitted (65%)
-* All the categorical variables were transformed to dummies
+* All the categorical variables were transformed into dummy variables
 * The percentage of complete data is: 82.7%. Considering that this is a high proportion of complete cases, missing data were not imputed
 * The final dataset contains 57642 patient records with 42 features
 
@@ -287,7 +312,18 @@ The important highlights is this section are:
 
 # This function brings a complete description of the dataset
 # for both categorical and numerical variables
-skimr::skim(tbl)
+skimr::skim(tbl %>% dplyr::select(-readmitted))
+tbl %>%
+  dplyr::select(readmitted) %>%
+  dplyr::mutate(readmitted = ifelse(readmitted == 1, 'Readmitted', 'No readmitted')) %>%
+  table() %>%
+  as.data.frame() %>%
+  dplyr::mutate(Perc = round(Freq/sum(Freq) * 100, 2)) %>% 
+  ggplot(aes_string(x = '.', y = 'Perc')) +
+  geom_bar(stat="identity", fill="steelblue")+
+  theme_minimal() +
+  geom_text(aes(label = Perc), vjust = 1.6, color = "white", size = 3.5) +
+  ylab('Percentage')
 ```
 
 EDA highlights:
@@ -297,17 +333,20 @@ EDA highlights:
 * The number of confirmed diagnoses range between 1 and 16 with a median of 8 diagnoses
 * The number of visits to the hospital network is positive skewed which means the majority of patients visits just one time. And just a few proportion visits more than once
 * 75% of the patients are more than 55 years old
+* The response variable has a distribution of 65% (no readmission) vs 35% (readmission)
 
 ## 4. Correlation Analysis
 
 The correlation analysis explore the association between all of different pairs of variables in the dataset. This step is very important to discard some highly correlated features before the classification analysis.
 
-The correlation analysis was carried out using the dataset with transformed features (dummy variables instead of the original categorical data) using the Spearman non-parametric correlation. This coefficient explores monotonic association but not necessarily linear as the Pearson correlation does.
+The correlation analysis was carried out using the dataset with transformed features (dummy variables instead of the original categorical data) using the Spearman non-parametric correlation. This correlation coefficient explores monotonic (increasing or decreasing) association but not necessarily linear.
 
 ```{r corr, include = TRUE}
 ## --------------------------------------------------- ##
 ## Correlation Analysis
 ## --------------------------------------------------- ##
+
+tbl_num_full <- vroom::vroom('./processed_data/diabetic_data_processed_2_complete.csv', delim = ',')
 
 # This function approximates the correlation calculation for
 # mixed variables (numerical and categorical). The following
@@ -318,7 +357,7 @@ The correlation analysis was carried out using the dataset with transformed feat
 # - Both variables categorical: Cramer's V test to measure
 # association between two nominal variables
 # Taken from https://gist.github.com/talegari/b514dbbc651c25e2075d88f31d48057b
-source(paste0(getwd(),'/scripts/cor2_modified.R'))
+source('./scripts/cor2_modified.R')
 
 m <- cor2(df = tbl_num_full)
 corrplot::corrplot(m,
@@ -329,28 +368,28 @@ corrplot::corrplot(m,
                    tl.cex	= .5)
 ```
 
-As can be observed in the matrix correlation there are some weak positive and negative correlations among the features in the dataset, specifically in the categories of the treatments applied.
+As can be observed in the correlation matrix there are some weak positive and negative correlations among the features in the dataset, particularly in the categories of the applied treatments.
 
 ## 5. Feature Selection
 
-One important step before studying the factors that insides in the readmission condition is to identify which are the features that contributes the most to explain the response variable.
+Before studying the factors that insides in the readmission condition, One important step is to identify which are the features that contributes the most to explain the response variable.
 
-This process is done by the application of the [Boruta algorithm](https://www.jstatsoft.org/article/view/v036i11) which uses Random Forest models to quantify the importance of each predictor variable to explain the response variable. And finally, giving a three category response per variable. The categories are: Confirmed, Tentative, or Rejected.
+This process is done by the application of the [Boruta algorithm](https://www.jstatsoft.org/article/view/v036i11) which uses Random Forest models to quantify the importance of each predictor variable to explain the response variable. The result from this process are three category response per variable. The categories are: _Confirmed_, _Tentative_, or _Rejected_.
 
-Despite, it is not possible to apply this algorithm over the full dataset considering the machine resources. The approach followed consists in:
+Despite it is not possible to apply this algorithm over the full dataset considering the machine resources a resample approach was applied. The approach followed consists in:
 
 * Generate 20 random samples of 2000 patient observations
 * Over each random sample run the Boruta algorithm
 * Obtain the final decision per variable
 * Using the 20 results create a frequency table getting the decision category with the maximum absolute frequency
-* Select the features which have the levels: Confirmed and Tentative
+* Select the features which have the levels: _Confirmed_ and _Tentative_
 
 ```{r fselection, include = TRUE}
 ## --------------------------------------------------- ##
 ## Feature selection
 ## --------------------------------------------------- ##
 
-out_dir <- paste0(getwd(),'/results')
+out_dir <- './results'
 if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
 if(!file.exists(paste0(out_dir,'/feature_selection_simulation.csv'))){
   
@@ -409,21 +448,25 @@ fnl_fst <- fts %>%
 fnl_fst[1] <- gsub('\`','',fnl_fst[1])
 cat('Selected features from Boruta algorithm\n')
 print(fnl_fst)
+
+tbl_num_full_sel <- tbl_num_full[,c(fnl_fst,'readmitted')]
 ```
 
-Finally, 13 variables were selected and are going to be used to the classification analysis reducing the number of features to evaluate.
+Finally, 13 variables were selected and are going to be used to the classification analysis reducing the number of features and hence the model complexity.
 
 ## 6. Classification Analysis
 
-The classification analysis approach consist in the following steps:
+The classification analysis was used to understand how the measured conditions affect the readmission scenario. The pipeline includes the following steps:
 
 * Split the dataset in two partitions: training (70%) and testing (30%) data
-* Over these partitions, adjust five models: logistic regression, artificial neural networks using a two hidden layers with 26 nodes each, decision tree, random forest model with 100 trees, and a gradient boosting trees model
-* Obtain the accuracy as a performance metric for all the models
+* Over these partitions, adjust five models: a logistic regression, a artificial neural network with two hidden layers and 26 nodes each, a decision tree\* model, a random forest model with 100 trees, and a gradient boosting trees\* model
+* Obtain the accuracy as a performance metric for all the models. This score allows to determine the percentage of correct classification either by readmission and not readmission conditions.
 * Select the model with the best performance
 * Calculate variable importance for all the features using the [moDel Agnostic Language for Exploration and eXplanation (DALEX)](https://github.com/ModelOriented/DALEX) methods
-* Use the partial dependency plots as a way to understand and complement the variable importance
-* Finally, obtain a decomposition of individual case-study predictions, to interpret how the best model is doing the predictions.
+* Use the partial dependency plots as a way to understand the relation direction and to complement the variable importance
+* Finally, obtain a decomposition of individual case-study predictions using [BreakDown](https://arxiv.org/abs/1804.01955) algorithm, to interpret how the best model is doing the predictions.
+
+\* These models were fitted with default set of hyper-parameters.
 
 ```{r classification, out.width = "70%", include = T}
 ## --------------------------------------------------- ##
@@ -543,16 +586,52 @@ if(!(file.exists('./results/prediction_decomposition_obs1.png') &
   pd_spark_gbt2 <- breakDown::break_down(xpl_spark_gbt, new_observation = row_06560)
   plot(pd_spark_gbt1)
   plot(pd_spark_gbt2)
-} else {
-  bd1 <- './results/prediction_decomposition_obs1.png'
-  knitr::include_graphics(bd1)
-  bd2 <- './results/prediction_decomposition_obs2.png'
-  knitr::include_graphics(bd2)
 }
+```
 
+Hightlights:
+
+* The performance/accuracy oscillates around 0.76 of correctly classifications for the five models
+* The accuracy for training and testing partitions have slight differences. This means that the models are not overfitting to the data
+* Despite the accuracy differences are small among the five models. The model with the best performance is the Gradient Boosting Trees (GBT) model under default hyper-parameters, followed by decision trees and random forest models
+* On the other hand, to get a better sense of the variable importance for the used features, the DALEX approach was used finding that: the number of visits, number of inpatient, time in hospital, age, number of laboratory procedures, and number of emergencies are the top 6 most contributing variables in their corresponding order.
+* A Partial Dependency Plot was created for each of the top 6 variables to explore how is the relationship between the predictor variables and the probability of being readmitted or no.
+  + More than one visit to the hospital and number of inpatient increases significantly the probability to be readmitted
+  + While, after having more than 8 confirmed diagnoses increases linearly the probability to be readmitted
+  + There is a slight increase of the probability to be readmitted between 50 and 75 years, meanwhile for the rest of the age range is almost constant
+  + There is a increase of the probability to be readmitted when a patient has a number of emergencies between 0 and almost 5 times. After that it decreases
+  + The number of days hospitalized shows a slightly decrease in the probability of readmission at the beginning (less than 2 days) and after that it is constant
+
+To give a sense of how the GBT model is doing the predictions, two patients from the test partition were analyzed. 
+
+Not readmitted patient.
+
+```{r ptn1, out.width = "70%", include = T}
+bd1 <- './results/prediction_decomposition_obs1.png'
+knitr::include_graphics(bd1)
+```
+
+As can be observed is the previous plot the final prediction (final prognosis) for this patient is 0, but this is a composition of positive and negative impacts from the attributes values. For instance, this patient visited the hospital just once and never was inpatient. Those two values have a negative impact in the probability to be readmitted, so those decreases the base line value (intercept) from 0.224 to 0.
+
+Readmitted patient
+
+```{r ptn2, out.width = "70%", include = T}
+bd2 <- './results/prediction_decomposition_obs2.png'
+knitr::include_graphics(bd2)
+```
+
+On the contrary, a patient which is readmitted the model also predict it well. And basically, the only variable that is influencing positively the final prediction is the number of visits (this patient had 14 visits to hospital network).
+
+```{r closespark, include = T}
 if(exists('sc')){
   spark_disconnect(sc) 
 }
 ```
 
 ## Conclusions
+
+* The drivers of the readmission of diabetes patients were analyzed by a data science process.
+* The number of visits, number of inpatient, and the number of confirmed diagnoses are the main drivers that increases the probability to be readmitted
+* Further analysis can consider:
+  + Impute missing data to include the 100% of the data
+  + Optimization of the hyper-parameters for the classification models using cross-validation to improve the classification performance
