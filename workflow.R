@@ -1,8 +1,4 @@
 # Next steps
-# 1. Increase number of trees or iterations for ML models
-# 2. Obtain AUC for training and testing per model
-# 3. Do a barplot in ggplot2 to select the model with the best performance
-# 4. With the selected model obtain feature importance using DALEX
 # 5. Describe two patient-cases using breakDown lib:
 #    - One patient with just one visit to the hospital
 #    - Another patient with the maximum number of visits in the testing dataset
@@ -19,7 +15,7 @@ suppressMessages(pacman::p_load(tidyverse, vroom, psych,
                                 future, future.apply, furrr,
                                 lsr, RColorBrewer, DT, skimr,
                                 naniar, ggrepel, DALEX,
-                                breakDown))
+                                breakDown, pdp, png))
 
 ## --------------------------------------------------- ##
 ## Data obtention
@@ -343,7 +339,7 @@ fts %>%
   tidyr::pivot_longer(cols = Run_1:Run_20) %>%
   dplyr::group_by(Feature, value) %>%
   dplyr::summarise(Count = n()) %>%
-  ggplot2::ggplot(aes(x = Feature, y = Count, fill = value)) +
+  ggplot2::ggplot(aes(x = Feature, y = Count, fill = factor(value, levels = c('Confirmed','Tentative','Rejected')))) +
   ggplot2::scale_fill_brewer(palette = 'Set1', direction = -1) +
   ggplot2::geom_bar(stat = 'identity') +
   ggplot2::coord_flip() +
@@ -368,114 +364,126 @@ tbl_num_full_sel <- tbl_num_full[,c(fnl_fst,'readmitted')]
 ## Classification analysis
 ## --------------------------------------------------- ##
 
-## Spark connection
-if(!exists('sc')){
-  sc <- sparklyr::spark_connect(master = 'local', version = '3.0.1')
-}
-tbl_num_full_sel_spk <- sparklyr::copy_to(sc, tbl_num_full_sel, overwrite = T)
-
-# Define partitions of the dataset: 70% for training, 30% for testing
-partitions <- tbl_num_full_sel_spk %>%
-  sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
-
-# Fit a logistic regression model
-fit_log <- partitions$training %>% ml_logistic_regression(readmitted ~ .)
-prd_log <- ml_predict(fit_log, partitions$test)
-ml_binary_classification_evaluator(x = prd_log, label_col = 'readmitted', raw_prediction_col = 'prediction')
-
-log_sum <- ml_evaluate(fit_log, partitions$test)
-log_roc <- log_sum$roc() %>% collect()
-
-ggplot(log_roc, aes(x = FPR, y = TPR)) +
-  geom_line() + geom_abline(lty = "dashed")
-
-# Fit a decision tree model
-fit_dct <- partitions$training %>% ml_decision_tree(readmitted ~ ., type = 'classification')
-prd_dct <- ml_predict(fit_dct, partitions$test)
-ml_binary_classification_evaluator(x = prd_dct, label_col = 'readmitted', raw_prediction_col = 'prediction')
-
-dct_sum <- ml_evaluate(fit_dct, partitions$test)
-# dct_roc <- dct_sum$roc() %>% collect()
-# 
-# ggplot(log_roc, aes(x = FPR, y = TPR)) +
-#   geom_line() + geom_abline(lty = "dashed")
-
-# Fit a random forest model
-fit_rdf <- partitions$training %>% ml_random_forest(readmitted ~ ., type = 'classification')
-prd_rdf <- ml_predict(fit_rdf, partitions$test)
-ml_binary_classification_evaluator(x = prd_rdf, label_col = 'readmitted', raw_prediction_col = 'prediction')
-
-rdf_sum <- ml_evaluate(fit_rdf, partitions$test)
-# rdf_roc <- log_rdf$roc() %>% collect()
-# 
-# ggplot(log_roc, aes(x = FPR, y = TPR)) +
-#   geom_line() + geom_abline(lty = "dashed")
-
-# Fit a gradient boosting trees model
-fit_gbt <- partitions$training %>% ml_gradient_boosted_trees(readmitted ~ ., type = 'classification')
-prd_gbt <- ml_predict(fit_gbt, partitions$test)
-ml_binary_classification_evaluator(x = prd_gbt, label_col = 'readmitted', raw_prediction_col = 'prediction')
-
-gbt_sum <- ml_evaluate(fit_gbt, partitions$test)
-
-# Test DALEX
-Test.local <- partitions$test %>% collect()
-custom_predict <- function(model, new_data){
+if(!file.exists('./results/model_accuracies.csv')){
   
-  new_data_spark <- copy_to(sc, new_data, name="spark_temp1b3c4e6", overwrite = T)
-  spark_tbl_scored <- ml_predict(model, new_data_spark)
-  res <- as.numeric(as.data.frame(spark_tbl_scored %>% select(prediction) %>% collect())$prediction)
-  # dplyr::db_drop_table(con = sc, table = "spark_temp1b3c4e6")
+  # Spark connection
+  if(!exists('sc')){
+    sc <- sparklyr::spark_connect(master = 'local', version = '3.0.1')
+  }
+  tbl_num_full_sel_spk <- sparklyr::copy_to(sc, tbl_num_full_sel, overwrite = T)
   
-  return(res)
+  # Define partitions of the dataset: 70% for training, 30% for testing
+  partitions <- tbl_num_full_sel_spk %>%
+    sparklyr::sdf_partition(training = 0.7, test = 0.3, seed = 1099)
+  
+  # Fit a logistic regression model
+  fit_log <- partitions$training %>% ml_logistic_regression(readmitted ~ .)
+  # Evaluate one model manually
+  # prd_log <- ml_predict(fit_log, partitions$test)
+  # ml_binary_classification_evaluator(x = prd_log, label_col = 'readmitted', raw_prediction_col = 'prediction')
+  
+  # Fit a neural network
+  fit_ann <- partitions$training %>% ml_multilayer_perceptron_classifier(readmitted ~ ., layers = c(13, 26, 26, 2))
+  
+  # Fit a decision tree model
+  fit_dct <- partitions$training %>% ml_decision_tree(readmitted ~ ., type = 'classification')
+  
+  # Fit a random forest model
+  fit_rdf <- partitions$training %>% ml_random_forest(readmitted ~ ., type = 'classification', num_trees = 100)
+  
+  # Fit a gradient boosting trees model
+  fit_gbt <- partitions$training %>% ml_gradient_boosted_trees(readmitted ~ ., type = 'classification')
+  
+  metrics <- data.frame(Model = c('Logistic regression', 'Neural network','Decision tree', 'Random forest', 'Gradient boosting trees'),
+                        Training = c(ml_evaluate(fit_log, partitions$training)$accuracy(),
+                                     ml_evaluate(fit_ann, partitions$training)$Accuracy,
+                                     ml_evaluate(fit_dct, partitions$training)$Accuracy,
+                                     ml_evaluate(fit_rdf, partitions$training)$Accuracy,
+                                     ml_evaluate(fit_gbt, partitions$training)$Accuracy),
+                        Testing  = c(ml_evaluate(fit_log, partitions$test)$accuracy(),
+                                     ml_evaluate(fit_ann, partitions$test)$Accuracy,
+                                     ml_evaluate(fit_dct, partitions$test)$Accuracy,
+                                     ml_evaluate(fit_rdf, partitions$test)$Accuracy,
+                                     ml_evaluate(fit_gbt, partitions$test)$Accuracy))
+  write.csv(metrics, './results/model_accuracies.csv', row.names = F)
+} else {
+  metrics <- read.csv('./results/model_accuracies.csv')
 }
-TEST.scored2 <- custom_predict(fit_gbt, Test.local)
 
-## explain
-explainer_spark_cv_rf <- explain(model            = fit_gbt,
-                                 data             = Test.local %>% select(-readmitted),
-                                 y                = Test.local$readmitted,
-                                 predict_function = custom_predict,
-                                 label            = 'Spark Gradient Boosting Trees',
-                                 type             = 'classification')
+metrics %>%
+  tidyr::pivot_longer(cols = 2:3, names_to = 'Partition', values_to = 'Accuracy') %>%
+  ggplot2::ggplot(aes(x = reorder(Model, Accuracy), y = Accuracy, fill = Partition)) +
+  ggplot2::geom_bar(stat = "identity", position = position_dodge()) +
+  ggplot2::scale_fill_brewer(palette = "Paired") +
+  ggplot2::coord_flip() +
+  ggplot2::theme_bw() +
+  ggplot2::xlab('')
 
-## model performance
-mp_spark_cv_rf <- model_performance(explainer_spark_cv_rf)
+cat('Based on the accuracy metric the best model is the Gradient boosting trees\n')
 
-mp_spark_cv_rf
+if(FALSE){
+  # Interpretation of the results
+  test_set <- partitions$test %>% dplyr::collect()
+  custom_predict <- function(model, new_data){
+    
+    new_data_spark <- copy_to(sc, new_data, name="spark_temp1b3c4e6", overwrite = T)
+    spark_tbl_scored <- ml_predict(model, new_data_spark)
+    res <- as.numeric(as.data.frame(spark_tbl_scored %>% select(prediction) %>% collect())$prediction)
+    # dplyr::db_drop_table(con = sc, table = "spark_temp1b3c4e6")
+    
+    return(res)
+  }
+  
+  # Explain
+  xpl_spark_gbt <- DALEX::explain(model            = fit_gbt,
+                                  data             = test_set %>% select(-readmitted),
+                                  y                = test_set$readmitted,
+                                  predict_function = custom_predict,
+                                  label            = 'Gradient Boosting Trees model',
+                                  type             = 'classification')
+  
+}
 
-plot(mp_spark_cv_rf)
+if(!file.exists('./results/gbt_variable_importance.png')){
+  # Variable importance
+  vim_spark_gbt <- DALEX::variable_importance(xpl_spark_gbt)
+  plot(vim_spark_gbt)
+} else {
+  vimp <- './results/gbt_variable_importance.png'
+  knitr::include_graphics(vimp)
+}
 
-plot(mp_spark_cv_rf, geom='boxplot')
+if(!file.exists('./results/pdp_gbt.png')){
+  # Predictor-response relationship
+  pdp_gbt  <- DALEX::variable_effect_partial_dependency(xpl_spark_gbt,
+                                                        variables = c("number_visits",
+                                                                      "number_inpatient",
+                                                                      "number_diagnoses",
+                                                                      "time_in_hospital",
+                                                                      "number_emergency",
+                                                                      "age_num"))
+  plot(pdp_gbt)
+} else {
+  pdp_m <- './results/pdp_gbt.png'
+  knitr::include_graphics(pdp_m)
+}
 
-## variable importance
-vi_spark_cv_rf <- variable_importance(explainer_spark_cv_rf)
+if(!(file.exists('./results/prediction_decomposition_obs1.png') &
+     file.exists('./results/prediction_decomposition_obs2.png'))){
+  # Prediction understanding
+  row_00001 <- test_set[1,]
+  row_06560 <- test_set[6560,]
+  pd_spark_gbt1 <- breakDown::break_down(xpl_spark_gbt, new_observation = row_00001)
+  pd_spark_gbt2 <- breakDown::break_down(xpl_spark_gbt, new_observation = row_06560)
+  plot(pd_spark_gbt1)
+  plot(pd_spark_gbt2)
+} else {
+  bd1 <- './results/prediction_decomposition_obs1.png'
+  knitr::include_graphics(bd1)
+  bd2 <- './results/prediction_decomposition_obs2.png'
+  knitr::include_graphics(bd2)
+}
 
-plot(vi_spark_cv_rf)
-
-## prediction understanding
-sample_row <- Test.local[1,]
-sample_row2 <- Test.local[17039,]
-pd_spark_cv_rf <- breakDown::break_down(explainer_spark_cv_rf, new_observation = sample_row)
-pd_spark_cv_rf2 <- breakDown::break_down(explainer_spark_cv_rf, new_observation = sample_row2)
-plot(pd_spark_cv_rf)
-plot(pd_spark_cv_rf2)
-
-# Fit a naive Bayes model
-fit_nvb <- partitions$training %>% ml_naive_bayes(readmitted ~ .)
-prd_nvb <- ml_predict(fit_nvb, partitions$test)
-ml_binary_classification_evaluator(x = prd_nvb, label_col = 'readmitted', raw_prediction_col = 'prediction')
-
-# Fit a neural network
-fit_ann <- partitions$training %>% ml_multilayer_perceptron_classifier(readmitted ~ ., layers = c(13, 64, 64, 2))
-prd_ann <- ml_predict(fit_ann, partitions$test)
-ml_binary_classification_evaluator(prd_ann)
-
-# K-means model
-kmeans_model <- tbl_num_full_sel_spk %>%
-  ml_kmeans(k = 2,
-            readmitted ~ .)
-predicted <- ml_predict(kmeans_model, tbl_num_full_sel_spk) %>% collect
-table(predicted$readmitted, predicted$prediction)
-
-spark_disconnect(sc)
+if(exists('sc')){
+  spark_disconnect(sc) 
+}
